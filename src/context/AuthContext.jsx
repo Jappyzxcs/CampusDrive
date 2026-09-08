@@ -39,7 +39,6 @@ export function AuthProvider({ children }) {
     return authenticatedUser;
   }, []);
 
-  // Added register function to establish a session upon signup
   const register = useCallback(async (userData) => {
     const authenticatedUser = await authService.register(userData); 
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authenticatedUser));
@@ -47,17 +46,20 @@ export function AuthProvider({ children }) {
     return authenticatedUser;
   }, []);
 
-  // FIX: Make logout async and call Firebase authService
   const logout = useCallback(async () => {
     try {
-      await authService.logout(); // Kill the active Firebase session
+      await authService.logout(); 
     } catch (error) {
       console.error("Firebase logout error:", error);
     } finally {
-      // Always clear local state even if Firebase throws an error
       window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
       setUser(null);
     }
+  }, []);
+
+  // THE FIX: Correctly maps to your authService.sendResetEmail function
+  const resetPassword = useCallback(async (email) => {
+    return await authService.sendResetEmail(email);
   }, []);
 
   const value = useMemo(
@@ -67,10 +69,11 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(user),
       isInitializing,
       login,
-      register, // Exposed register
+      register,
       logout,
+      resetPassword, // Exposed for all your login pages to use
     }),
-    [user, isInitializing, login, register, logout],
+    [user, isInitializing, login, register, logout, resetPassword],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
