@@ -1,0 +1,11 @@
+[
+  { "id": "usr_001", "name": "Juan Dela Cruz", "email": "student@lspu.edu.ph", "role": "student_faculty", "college": "College of Computer Studies", "type": "Student", "status": "active", "dateCreated": "2026-06-02" },
+  { "id": "usr_005", "name": "Maria Santos", "email": "maria.santos@lspu.edu.ph", "role": "student_faculty", "college": "College of Engineering", "type": "Faculty", "status": "active", "dateCreated": "2026-06-04" },
+  { "id": "usr_006", "name": "Rico Bautista", "email": "rico.bautista@lspu.edu.ph", "role": "student_faculty", "college": "College of Computer Studies", "type": "Student", "status": "active", "dateCreated": "2026-06-10" },
+  { "id": "usr_007", "name": "Angeline Reyes", "email": "angeline.reyes@lspu.edu.ph", "role": "student_faculty", "college": "College of Arts and Sciences", "type": "Student", "status": "inactive", "dateCreated": "2026-05-20" },
+  { "id": "usr_002", "name": "GSU Admin", "email": "gsu.admin@lspu.edu.ph", "role": "admin_gsu", "college": null, "type": "Staff", "status": "active", "dateCreated": "2026-01-15" },
+  { "id": "usr_003", "name": "BAO Staff", "email": "bao@lspu.edu.ph", "role": "bao", "college": null, "type": "Staff", "status": "active", "dateCreated": "2026-01-15" },
+  { "id": "usr_004", "name": "Security Guard", "email": "guard@lspu.edu.ph", "role": "guard", "college": null, "type": "Staff", "status": "active", "dateCreated": "2026-01-15" },
+  { "id": "usr_008", "name": "Eric Francisco", "email": "eric.francisco@lspu.edu.ph", "role": "guard", "college": null, "type": "Staff", "status": "active", "dateCreated": "2026-02-01" },
+  { "id": "usr_009", "name": "Carlo Ramos", "email": "visitor@lspu.edu.ph", "role": "visitor", "college": null, "type": "Visitor", "status": "active", "dateCreated": "2026-08-10" }
+]

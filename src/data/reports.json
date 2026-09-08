@@ -1,0 +1,25 @@
+{
+  "generatedAt": "2026-08-12T09:00:00",
+  "range": "Last 7 days",
+  "dailyEntries": [
+    { "date": "2026-08-06", "valid": 142, "flagged": 3 },
+    { "date": "2026-08-07", "valid": 156, "flagged": 1 },
+    { "date": "2026-08-08", "valid": 149, "flagged": 4 },
+    { "date": "2026-08-09", "valid": 133, "flagged": 2 },
+    { "date": "2026-08-10", "valid": 98, "flagged": 1 },
+    { "date": "2026-08-11", "valid": 161, "flagged": 2 },
+    { "date": "2026-08-12", "valid": 74, "flagged": 2 }
+  ],
+  "violationBreakdown": [
+    { "type": "Sticker Mismatch", "count": 6 },
+    { "type": "Unregistered Vehicle", "count": 9 },
+    { "type": "Expired Registration", "count": 5 },
+    { "type": "Duplicate Sticker", "count": 3 }
+  ],
+  "applicationsSummary": {
+    "totalThisMonth": 41,
+    "approved": 29,
+    "rejected": 4,
+    "pending": 8
+  }
+}

@@ -1,0 +1,7 @@
+[
+  { "id": "scn_001", "timestamp": "2026-08-12T07:12:00", "stickerSerial": "LSPU-2026-004821", "plateNumber": "NBC 1234", "ownerName": "Juan Dela Cruz", "vehicleMake": "Honda Click 160", "result": "valid", "confidence": 0.97 },
+  { "id": "scn_002", "timestamp": "2026-08-12T07:20:00", "stickerSerial": "LSPU-2026-004822", "plateNumber": "NCD 5521", "ownerName": "Maria Santos", "vehicleMake": "Toyota Vios", "result": "valid", "confidence": 0.95 },
+  { "id": "scn_003", "timestamp": "2026-08-12T07:34:00", "stickerSerial": "LSPU-2025-001190", "plateNumber": "NAP 3310", "ownerName": "Angeline Reyes", "vehicleMake": "Honda Beat", "result": "expired", "confidence": 0.91 },
+  { "id": "scn_004", "timestamp": "2026-08-12T08:02:00", "stickerSerial": null, "plateNumber": "NZR 8801", "ownerName": null, "vehicleMake": null, "result": "unregistered", "confidence": 0.88 },
+  { "id": "scn_005", "timestamp": "2026-08-12T08:15:00", "stickerSerial": "LSPU-2026-004822", "plateNumber": "NCD 5521", "ownerName": "Unknown (flagged)", "vehicleMake": null, "result": "duplicate", "confidence": 0.93 }
+]

@@ -1,0 +1,9 @@
+[
+  { "id": "ntf_001", "userId": "usr_001", "title": "Sticker ready for pickup", "message": "Your sticker LSPU-2026-004821 has been paid and is ready for pickup at the GSU office.", "type": "success", "read": true, "timestamp": "2026-06-11T10:00:00" },
+  { "id": "ntf_002", "userId": "usr_006", "title": "Application received", "message": "Your new registration for NJK 9087 was submitted and is pending admin review.", "type": "info", "read": false, "timestamp": "2026-08-05T09:32:00" },
+  { "id": "ntf_003", "userId": "usr_006", "title": "Application rejected", "message": "Your application for NXP 7742 was rejected: OR/CR image unreadable. Please resubmit a clearer photo.", "type": "danger", "read": false, "timestamp": "2026-08-02T13:10:00" },
+  { "id": "ntf_007", "userId": "usr_007", "title": "Renewal under review", "message": "Your renewal for NAP 3310 is being reviewed by GSU.", "type": "info", "read": false, "timestamp": "2026-08-09T11:00:00" },
+  { "id": "ntf_004", "userId": "usr_007", "title": "Registration expiring soon", "message": "Your vehicle NAP 3310's accreditation expired on 2026-07-01. Please renew to avoid denied entry.", "type": "warning", "read": false, "timestamp": "2026-07-25T08:00:00" },
+  { "id": "ntf_005", "userId": "usr_002", "title": "3 applications pending review", "message": "You have 3 applications awaiting review, including 1 renewal.", "type": "info", "read": false, "timestamp": "2026-08-12T07:00:00" },
+  { "id": "ntf_006", "userId": "usr_003", "title": "1 sticker flagged as duplicate", "message": "Serial LSPU-2026-004822 was scanned on two different plates. Review required.", "type": "danger", "read": false, "timestamp": "2026-08-12T08:16:00" }
+]

@@ -1,0 +1,6 @@
+[
+  { "id": "vio_001", "timestamp": "2026-08-12T08:15:00", "plateNumber": "NCD 5521", "violationType": "Duplicate Sticker", "guardName": "Eric Francisco", "notes": "Same serial LSPU-2026-004822 scanned on a second vehicle at Side Gate.", "status": "under_investigation" },
+  { "id": "vio_002", "timestamp": "2026-08-11T16:30:00", "plateNumber": "NQW 2214", "violationType": "Sticker Mismatch", "guardName": "Eric Francisco", "notes": "Sticker LSPU-2026-003390 is registered to a different plate number.", "status": "under_investigation" },
+  { "id": "vio_003", "timestamp": "2026-08-05T09:10:00", "plateNumber": "NHT 6620", "violationType": "Unregistered Vehicle", "guardName": "Security Guard", "notes": "No matching record found. Denied entry, advised to register.", "status": "resolved" },
+  { "id": "vio_004", "timestamp": "2026-07-28T14:02:00", "plateNumber": "NAP 3310", "violationType": "Expired Registration", "guardName": "Security Guard", "notes": "Institutional accreditation lapsed. Owner notified to renew.", "status": "resolved" }
+]

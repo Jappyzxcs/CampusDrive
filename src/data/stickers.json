@@ -1,0 +1,72 @@
+[
+  {
+    "id": "stk_001",
+    "serial": "LSPU-2026-004821",
+    "vehicleId": "veh_001",
+    "plateNumber": "NBC 1234",
+    "ownerName": "Juan Dela Cruz",
+    "status": "active",
+    "assignedBy": "BAO Staff",
+    "assignedDate": "2026-06-10",
+    "paymentStatus": "paid",
+    "amount": 150,
+    "pickupStatus": "picked_up",
+    "pickupDate": "2026-06-12"
+  },
+  {
+    "id": "stk_002",
+    "serial": "LSPU-2026-004822",
+    "vehicleId": "veh_002",
+    "plateNumber": "NCD 5521",
+    "ownerName": "Maria Santos",
+    "status": "active",
+    "assignedBy": "BAO Staff",
+    "assignedDate": "2026-06-12",
+    "paymentStatus": "paid",
+    "amount": 200,
+    "pickupStatus": "picked_up",
+    "pickupDate": "2026-06-14"
+  },
+  {
+    "id": "stk_003",
+    "serial": "LSPU-2025-001190",
+    "vehicleId": "veh_004",
+    "plateNumber": "NAP 3310",
+    "ownerName": "Angeline Reyes",
+    "status": "expired",
+    "assignedBy": "BAO Staff",
+    "assignedDate": "2025-07-02",
+    "paymentStatus": "paid",
+    "amount": 150,
+    "pickupStatus": "picked_up",
+    "pickupDate": "2025-07-05"
+  },
+  {
+    "id": "stk_004",
+    "serial": "LSPU-2026-004910",
+    "vehicleId": null,
+    "plateNumber": null,
+    "ownerName": null,
+    "status": "unassigned",
+    "assignedBy": null,
+    "assignedDate": null,
+    "paymentStatus": "unpaid",
+    "amount": null,
+    "pickupStatus": "pending",
+    "pickupDate": null
+  },
+  {
+    "id": "stk_005",
+    "serial": "LSPU-2026-004822",
+    "vehicleId": "veh_099",
+    "plateNumber": "NCD 5521",
+    "ownerName": "Unknown (flagged)",
+    "status": "flagged_duplicate",
+    "assignedBy": null,
+    "assignedDate": "2026-08-10",
+    "paymentStatus": "unpaid",
+    "amount": null,
+    "pickupStatus": "pending",
+    "pickupDate": null
+  }
+]

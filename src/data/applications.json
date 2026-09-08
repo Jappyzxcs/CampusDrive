@@ -1,0 +1,118 @@
+[
+  {
+    "id": "app_001",
+    "vehicleId": "veh_001",
+    "applicantId": "usr_001",
+    "applicantName": "Juan Dela Cruz",
+    "type": "New Registration",
+    "status": "approved",
+    "submittedDate": "2026-06-08",
+    "reviewedDate": "2026-06-10",
+    "reviewedBy": "GSU Admin",
+    "reviewNotes": "All documents verified. NLP match confidence 98%.",
+    "documents": [
+      { "type": "Driver's License", "fileName": "license_juan.pdf", "verified": true },
+      { "type": "OR/CR", "fileName": "orcr_juan.pdf", "verified": true }
+    ],
+    "timeline": [
+      { "label": "Application submitted", "date": "2026-06-08", "done": true },
+      { "label": "Document verification (NLP/OCR)", "date": "2026-06-09", "done": true },
+      { "label": "Admin review", "date": "2026-06-10", "done": true },
+      { "label": "Sticker assigned (BAO)", "date": "2026-06-10", "done": true },
+      { "label": "Payment confirmed", "date": "2026-06-11", "done": true },
+      { "label": "Sticker picked up", "date": "2026-06-12", "done": true }
+    ]
+  },
+  {
+    "id": "app_002",
+    "vehicleId": "veh_002",
+    "applicantId": "usr_005",
+    "applicantName": "Maria Santos",
+    "type": "New Registration",
+    "status": "approved",
+    "submittedDate": "2026-06-11",
+    "reviewedDate": "2026-06-12",
+    "reviewedBy": "GSU Admin",
+    "reviewNotes": "Approved. Faculty ID cross-checked.",
+    "documents": [
+      { "type": "Driver's License", "fileName": "license_maria.pdf", "verified": true },
+      { "type": "OR/CR", "fileName": "orcr_maria.pdf", "verified": true }
+    ],
+    "timeline": [
+      { "label": "Application submitted", "date": "2026-06-11", "done": true },
+      { "label": "Document verification (NLP/OCR)", "date": "2026-06-11", "done": true },
+      { "label": "Admin review", "date": "2026-06-12", "done": true },
+      { "label": "Sticker assigned (BAO)", "date": "2026-06-12", "done": true },
+      { "label": "Payment confirmed", "date": "2026-06-13", "done": true },
+      { "label": "Sticker picked up", "date": "2026-06-14", "done": true }
+    ]
+  },
+  {
+    "id": "app_003",
+    "vehicleId": "veh_003",
+    "applicantId": "usr_006",
+    "applicantName": "Rico Bautista",
+    "type": "New Registration",
+    "status": "pending",
+    "submittedDate": "2026-08-05",
+    "reviewedDate": null,
+    "reviewedBy": null,
+    "reviewNotes": null,
+    "documents": [
+      { "type": "Driver's License", "fileName": "license_rico.pdf", "verified": true },
+      { "type": "OR/CR", "fileName": "orcr_rico.pdf", "verified": false }
+    ],
+    "timeline": [
+      { "label": "Application submitted", "date": "2026-08-05", "done": true },
+      { "label": "Document verification (NLP/OCR)", "date": "2026-08-05", "done": true },
+      { "label": "Admin review", "date": null, "done": false },
+      { "label": "Sticker assigned (BAO)", "date": null, "done": false },
+      { "label": "Payment confirmed", "date": null, "done": false },
+      { "label": "Sticker picked up", "date": null, "done": false }
+    ]
+  },
+  {
+    "id": "app_004",
+    "vehicleId": "veh_005",
+    "applicantId": "usr_006",
+    "applicantName": "Rico Bautista",
+    "type": "New Registration",
+    "status": "rejected",
+    "submittedDate": "2026-08-01",
+    "reviewedDate": "2026-08-02",
+    "reviewedBy": "GSU Admin",
+    "reviewNotes": "OR/CR image unreadable — low resolution. Applicant asked to resubmit.",
+    "documents": [
+      { "type": "Driver's License", "fileName": "license_rico2.pdf", "verified": true },
+      { "type": "OR/CR", "fileName": "orcr_rico2.pdf", "verified": false }
+    ],
+    "timeline": [
+      { "label": "Application submitted", "date": "2026-08-01", "done": true },
+      { "label": "Document verification (NLP/OCR)", "date": "2026-08-01", "done": true },
+      { "label": "Admin review", "date": "2026-08-02", "done": true },
+      { "label": "Rejected — revision requested", "date": "2026-08-02", "done": true }
+    ]
+  },
+  {
+    "id": "app_005",
+    "vehicleId": "veh_004",
+    "applicantId": "usr_007",
+    "applicantName": "Angeline Reyes",
+    "type": "Renewal",
+    "status": "under_review",
+    "submittedDate": "2026-08-09",
+    "reviewedDate": null,
+    "reviewedBy": null,
+    "reviewNotes": null,
+    "documents": [
+      { "type": "Driver's License", "fileName": "license_angeline.pdf", "verified": true },
+      { "type": "OR/CR", "fileName": "orcr_angeline_2026.pdf", "verified": true }
+    ],
+    "timeline": [
+      { "label": "Renewal submitted", "date": "2026-08-09", "done": true },
+      { "label": "Document verification (NLP/OCR)", "date": "2026-08-09", "done": true },
+      { "label": "Admin review", "date": null, "done": false },
+      { "label": "Sticker reissued (BAO)", "date": null, "done": false }
+    ]
+  }
+]

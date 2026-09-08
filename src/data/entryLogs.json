@@ -1,0 +1,9 @@
+[
+  { "id": "log_001", "timestamp": "2026-08-12T07:12:00", "guardName": "Security Guard", "gate": "Main Gate", "plateNumber": "NBC 1234", "stickerSerial": "LSPU-2026-004821", "ownerName": "Juan Dela Cruz", "result": "valid" },
+  { "id": "log_002", "timestamp": "2026-08-12T07:20:00", "guardName": "Security Guard", "gate": "Main Gate", "plateNumber": "NCD 5521", "stickerSerial": "LSPU-2026-004822", "ownerName": "Maria Santos", "result": "valid" },
+  { "id": "log_003", "timestamp": "2026-08-12T07:34:00", "guardName": "Eric Francisco", "gate": "Side Gate", "plateNumber": "NAP 3310", "stickerSerial": "LSPU-2025-001190", "ownerName": "Angeline Reyes", "result": "expired" },
+  { "id": "log_004", "timestamp": "2026-08-12T08:02:00", "guardName": "Security Guard", "gate": "Main Gate", "plateNumber": "NZR 8801", "stickerSerial": null, "ownerName": null, "result": "unregistered" },
+  { "id": "log_005", "timestamp": "2026-08-12T08:15:00", "guardName": "Eric Francisco", "gate": "Side Gate", "plateNumber": "NCD 5521", "stickerSerial": "LSPU-2026-004822", "ownerName": "Unknown (flagged)", "result": "duplicate" },
+  { "id": "log_006", "timestamp": "2026-08-11T17:45:00", "guardName": "Security Guard", "gate": "Main Gate", "plateNumber": "NBC 1234", "stickerSerial": "LSPU-2026-004821", "ownerName": "Juan Dela Cruz", "result": "valid" },
+  { "id": "log_007", "timestamp": "2026-08-11T16:30:00", "guardName": "Eric Francisco", "gate": "Main Gate", "plateNumber": "NQW 2214", "stickerSerial": "LSPU-2026-003390", "ownerName": null, "result": "mismatch" }
+]
