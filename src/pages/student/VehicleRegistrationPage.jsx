@@ -6,13 +6,13 @@ import { SelectField } from '../../components/forms/SelectField';
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
-import { applicationService } from '../../services/applicationService';
+import { applicationService, compressImageToBase64 } from '../../services/applicationService';
 import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'; // <-- Vite specific import
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'; 
 
-// Setup PDF.js worker to use the local bundled version
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+
 /* =========================================================================
    NLP & PREPROCESSING HELPERS
    ========================================================================= */
@@ -44,12 +44,6 @@ function namesMatch(a, b) {
   if (!na || !nb) return false;
   if (na === nb) return true;
 
-  // OCR can leave a stray short token behind (e.g. one leftover letter
-  // picked up from an adjacent field/line) without it being a real name
-  // difference. Tolerate that: every substantive token (length >= 3) from
-  // the shorter name must appear in the longer one, and any tokens present
-  // in one name but not the other must be short (<= 2 chars) to be treated
-  // as noise rather than a genuine mismatch.
   const ta = na.split(' ').filter(Boolean);
   const tb = nb.split(' ').filter(Boolean);
   const [shorter, longer] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
@@ -125,27 +119,12 @@ function extractAllDates(text) {
   return found;
 }
 
-/* =========================================================================
-   UPDATED NAME EXTRACTION & CLEANUP
-   ========================================================================= */
-
-// New helper to strip OCR artifacts, column bleeds, and stray trailing letters
 function cleanExtractedName(rawName) {
   if (!rawName) return null;
-  
-  // 1. Stop at OCR column boundaries (Tesseract often uses 2+ spaces between distinct tabular fields)
   let cleaned = rawName.split(/\s{2,}/)[0];
-  
-  // 2. Strip lowercase artifacts and everything following them
   cleaned = cleaned.replace(/\s+[a-z].*$/, '');
-  
-  // 3. Remove trailing non-alphabetic noise (punctuation, dashes at the end)
   cleaned = cleaned.replace(/[^A-Z]+$/, '');
-  
-  // 4. FIX: Strip any single isolated letter at the exact end of the string 
-  // (Catches vertical borders read as "L" or "I")
   cleaned = cleaned.replace(/\s+[A-Z]$/, '');
-  
   return cleaned.trim();
 }
 
@@ -154,7 +133,6 @@ function extractLicenseName(text) {
   if (!label) return null;
   const windowText = text.slice(label.index + label[0].length, label.index + label[0].length + 150);
   const m = windowText.match(/([A-Z][A-Z\-. ]+,\s*[A-Z][A-Z\-. ]+)/);
-  
   return m ? cleanExtractedName(m[1]) : null;
 }
 
@@ -162,9 +140,7 @@ function extractCrName(text) {
   const label = text.match(/COMPLETE\s*OWN[HE]RS?\s*NAME/i);
   if (!label) return null;
   const windowText = text.slice(label.index + label[0].length, label.index + label[0].length + 150);
-  // Grabs the rest of the line, which we will now aggressively clean
   const m = windowText.match(/[:\n]\s*([A-Z][^\n]*)/);
-  
   return m ? cleanExtractedName(m[1]) : null;
 }
 
@@ -173,7 +149,6 @@ function extractOrName(text) {
   if (!label) return null;
   const windowText = text.slice(label.index + label[0].length, label.index + label[0].length + 150);
   const m = windowText.match(/([A-Z][A-Z\- ]+,\s*[A-Z][A-Z\- ]+)/);
-  
   return m ? cleanExtractedName(m[1]) : null;
 }
 
@@ -247,10 +222,6 @@ const grayscaleCanvas = (source) => {
   return canvas;
 };
 
-// Otsu's method: picks the threshold that best splits an image's pixels into
-// two clusters (background vs. foreground/text) based on its own histogram,
-// instead of assuming every photo has the same fixed brightness (135) — which
-// breaks down for photographed IDs with glare, shadows, or uneven lighting.
 const computeOtsuThreshold = (grayValues) => {
   const histogram = new Array(256).fill(0);
   for (let i = 0; i < grayValues.length; i++) histogram[grayValues[i]]++;
@@ -274,8 +245,6 @@ const computeOtsuThreshold = (grayValues) => {
       threshold = t;
     }
   }
-  // Clamp to sane bounds so a degenerate image (near solid color, blank page)
-  // can't collapse into an unusable all-black or all-white result.
   return Math.min(200, Math.max(60, threshold));
 };
 
@@ -304,10 +273,6 @@ const binarizeCanvas = (source) => {
   return canvas;
 };
 
-// Tesseract page-segmentation modes we use: AUTO works well for a full
-// structured layout (labels + values), SPARSE_TEXT is tuned for finding
-// scattered, non-contiguous text/codes (e.g. plate or serial numbers) which
-// is what the alnum whitelist pass is looking for.
 const TESS_PSM = { AUTO: '3', SPARSE_TEXT: '11' };
 
 const ocrBothPasses = async (sourceCanvas, psm = TESS_PSM.AUTO) => {
@@ -339,8 +304,6 @@ const extractPdfTextLayer = async (pdfDoc) => {
   return text;
 };
 
-// Detects whether a PDF page has an embedded raster image (e.g. a photographed/
-// scanned license pasted into the PDF) rather than being real vector text.
 const pdfHasEmbeddedImage = async (pdfDoc) => {
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     const page = await pdfDoc.getPage(i);
@@ -356,13 +319,9 @@ const pdfHasEmbeddedImage = async (pdfDoc) => {
 };
 
 /* =========================================================================
-   CROP / ROTATE / AUTO-DETECT HELPERS (for the manual crop step)
+   CROP / ROTATE / AUTO-DETECT HELPERS
    ========================================================================= */
 
-// Rotates a canvas by an arbitrary angle around its center, expanding the
-// output to fit the whole rotated image (filled white) so corners never get
-// clipped. Always rotates from a pristine source rather than chaining
-// rotations, to avoid compounding blur across repeated re-rasterizations.
 const rotateCanvas = (source, degrees) => {
   const canvas = document.createElement('canvas');
   if (!degrees) {
@@ -401,13 +360,6 @@ const cropCanvas = (source, rect) => {
   return canvas;
 };
 
-// Best-effort auto-crop: downscales for speed, computes an edge-density map,
-// and finds the largest contiguous band of high-edge rows/columns — a card
-// or document with text and a photo generally has denser edges than a plain
-// background. This is a heuristic, not a guarantee: it works well for IDs
-// photographed on a plain surface, and gives a reasonable starting rectangle
-// for busier backgrounds (patterned surfaces, clutter) that the person can
-// still drag-correct in the crop modal.
 const autoDetectCardBounds = (canvas) => {
   const maxDim = 300;
   const scale = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
@@ -498,8 +450,6 @@ const ocrPdf = async (pdfDoc) => {
   return { text, alnumText };
 };
 
-// Renders a file's first page (PDF) or the whole image to a full-resolution
-// canvas, for the crop modal to display and operate on before OCR ever runs.
 const renderFileToCanvas = async (file) => {
   if (file.type === 'application/pdf') {
     const arrayBuffer = await file.arrayBuffer();
@@ -540,10 +490,6 @@ const processFile = async (file) => {
     const layerText = cleanText(await extractPdfTextLayer(pdfDoc));
     const hasEmbeddedImage = await pdfHasEmbeddedImage(pdfDoc);
 
-    // Only trust the text layer on its own if it's substantial AND the page
-    // isn't just a photo/scan pasted in as an image (which can carry a short,
-    // irrelevant text layer — e.g. a scanner watermark or static form labels —
-    // that would otherwise cause us to skip OCR and miss the real content).
     if (layerText.length > 120 && !hasEmbeddedImage) {
       return { text: layerText, alnumText: '' };
     }
@@ -594,20 +540,17 @@ export default function VehicleRegistrationPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const defaultRegistrantType = user?.role === 'faculty' ? 'Faculty' : 'Student';
   
-  // Base Form State
   const [form, setForm] = useState({
     lastName: '', firstName: '', middleName: '', contactNo: '', address: '', municipality: '',
     registrantType: defaultRegistrantType, vehicleType: '', yearAndSection: '', 
     employeeId: '', companyId: '', studentId: '', plateNumber: ''
   });
   
-  // File States
   const [vehiclePhotos, setVehiclePhotos] = useState([]);
   const [docs, setDocs] = useState({
     license: null, or: null, cr: null, authLetter: null, deedOfSale: null, companyCert: null
   });
 
-  // NLP Extracted Data State
   const [extractedData, setExtractedData] = useState({
     licenseName: '', crName: '', color: '', licenseExpiry: '', orExpiry: ''
   });
@@ -615,12 +558,8 @@ export default function VehicleRegistrationPage() {
 
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Tracks which document (license/or/cr) is currently in the crop/rotate
-  // modal: { key, sourceCanvas, originalFile } while open, otherwise null.
   const [cropTarget, setCropTarget] = useState(null);
 
-  // --- Handlers ---
   function update(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
     if (errors[key]) setErrors((e) => ({ ...e, [key]: null }));
@@ -653,8 +592,6 @@ export default function VehicleRegistrationPage() {
         const canvas = await renderFileToCanvas(file);
         setCropTarget({ key, sourceCanvas: canvas, originalFile: file });
       } catch (err) {
-        // If preview rendering fails for any reason, fall back to using the
-        // file as-is rather than blocking the upload entirely.
         setDocs((prev) => ({ ...prev, [key]: file }));
       }
       return;
@@ -683,7 +620,6 @@ export default function VehicleRegistrationPage() {
     setCropTarget(null);
   }
 
-  // --- Validations ---
   function validateStep1() {
     const next = {};
     if (!form.lastName.trim()) next.lastName = 'Required';
@@ -721,7 +657,6 @@ export default function VehicleRegistrationPage() {
     return Object.keys(next).length === 0;
   }
 
-  // --- Actions ---
   function handleNextStep1(event) {
     event.preventDefault();
     if (validateStep1()) {
@@ -738,7 +673,6 @@ export default function VehicleRegistrationPage() {
     showToast('Starting AI extraction. This may take a few moments...', { type: 'info' });
 
     try {
-      // Process documents simultaneously
       const [licenseRes, crRes, orRes] = await Promise.all([
         processFile(docs.license),
         processFile(docs.cr),
@@ -749,7 +683,6 @@ export default function VehicleRegistrationPage() {
       const crText = `${crRes.text}\n${crRes.alnumText}`;
       const orText = `${orRes.text}\n${orRes.alnumText}`;
 
-      // Extract specific fields
       const licenseName = extractLicenseName(licenseText) || '';
       const rawCrName = extractCrName(crText) || '';
       const orName = extractOrName(orText) || '';
@@ -757,9 +690,7 @@ export default function VehicleRegistrationPage() {
       const licenseExpiry = extractLicenseExpiry(licenseText) || '';
       const orExpiry = extractOrExpiry(orText) || '';
 
-      // Smart Fallback: Pick cleanest registrant name between CR and OR
       const bestCrName = (orName.length > rawCrName.length) ? orName : rawCrName;
-      
       const isMatch = namesMatch(licenseName, bestCrName);
 
       setExtractedData({
@@ -777,7 +708,6 @@ export default function VehicleRegistrationPage() {
 
     } catch (error) {
       console.error('OCR Extraction failed:', error);
-      // This will now show the exact technical reason it crashed on your screen!
       showToast(`Failed: ${error.message || 'Unknown error. Check console.'}`, { type: 'danger' });
     } finally {
       setIsSubmitting(false);
@@ -786,24 +716,52 @@ export default function VehicleRegistrationPage() {
 
   async function handleSubmitFinal(event) {
     event.preventDefault();
+    
+    // Check if the AI extracted name matches their actual LSPU account name
+    const accountName = user?.fullName || user?.name || '';
+    const matchesAccountName = namesMatch(accountName, extractedData.licenseName) || namesMatch(accountName, extractedData.crName);
+    
+    // THE FIX: Included Company Certificate as a valid override document
+    if (!matchesAccountName && !docs.authLetter && !docs.deedOfSale && !docs.companyCert) {
+      showToast('Document names do not match your account name. You MUST upload an Authorization Letter, Deed of Sale, or Company Certificate below.', { type: 'danger' });
+      return; 
+    }
+
     setIsSubmitting(true);
+    showToast('Processing documents... Please wait.', { type: 'info' });
     
     try {
-      // 1. Package all the data exactly how the Admin page expects it
+      // Compress documents to lightweight Base64 strings (No Blaze plan needed!)
+      const [licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
+        compressImageToBase64(docs.license),
+        compressImageToBase64(docs.or),
+        compressImageToBase64(docs.cr),
+        compressImageToBase64(docs.authLetter),
+        compressImageToBase64(docs.deedOfSale),
+        compressImageToBase64(docs.companyCert),
+      ]);
+
+      const documentUrls = {
+        license: licenseUrl,
+        or: orUrl,
+        cr: crUrl,
+        authLetter: authLetterUrl,
+        deedOfSale: deedOfSaleUrl,
+        companyCert: companyCertUrl,
+      };
+
       const applicationData = {
         applicantName: `${form.firstName} ${form.lastName}`.trim(),
         type: form.registrantType === 'Student' ? 'New Registration - Student' : 'New Registration - Faculty',
-        // Format date to match your table (YYYY-MM-DD)
         submittedDate: new Date().toISOString().split('T')[0], 
         status: 'pending',
-        // Save all the underlying details for the review page
         vehicleDetails: form,
         nlpExtractedData: extractedData,
         nlpNamesMatched: nameMatchResult,
-        userId: user?.uid || 'anonymous'
+        userId: user?.uid || user?.id || 'anonymous',
+        documentUrls: documentUrls // Stored directly in Firestore!
       };
 
-      // 2. Send it to Firebase!
       await applicationService.createApplication(applicationData);
 
       showToast('Registration submitted for admin review.', { type: 'success' });
@@ -817,7 +775,6 @@ export default function VehicleRegistrationPage() {
     }
   }
 
-  // --- UI Helpers ---
   const stepTitles = {
     1: 'Registrant & Vehicle Basics',
     2: 'Upload Documents',
@@ -924,6 +881,22 @@ export default function VehicleRegistrationPage() {
                 Upload clear images of your documents. Our system will automatically extract and verify the details.
               </p>
 
+              <div className="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-xl text-sm mb-2 flex gap-3 items-start">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <strong className="block mb-1">📸 Tips for fast AI Verification:</strong>
+                  <ul className="list-disc pl-4 space-y-1 text-blue-700/90">
+                    <li>Place your document on a flat, dark surface.</li>
+                    <li>Ensure good lighting and avoid camera flash glare.</li>
+                    <li>Do not cover any text with your fingers.</li>
+                    <li>All Documents should be taken on PORTRAIT, and not crumpled.</li>
+                    <li>Use the LTMS Portal’s Digital ID if possible.</li>
+                  </ul>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-5">
                 <DocumentUploader label="Driver's License ID" id="license" required file={docs.license} error={errors.license} onChange={(e) => handleDocSelect('license', e.target.files[0])} />
                 <DocumentUploader label="Official Receipt (OR)" id="or" required file={docs.or} error={errors.or} onChange={(e) => handleDocSelect('or', e.target.files[0])} />
@@ -965,7 +938,6 @@ export default function VehicleRegistrationPage() {
                 </div>
               </div>
 
-              {/* Conditional Fields based on NLP Match */}
               {!nameMatchResult && (
                 <div className="rounded-lg bg-amber-50 p-5 border border-amber-200">
                   <div className="flex items-start gap-3 mb-4">
@@ -1016,7 +988,6 @@ export default function VehicleRegistrationPage() {
   );
 }
 
-// Simple internal component for single document uploads to keep the code clean
 function DocumentUploader({ label, id, required, file, error, onChange }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -1037,17 +1008,9 @@ function DocumentUploader({ label, id, required, file, error, onChange }) {
   );
 }
 
-/* =========================================================================
-   MANUAL CROP / ROTATE MODAL
-   ========================================================================= */
-
 const HANDLE_SIZE = 14;
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 
-// Lets the person confirm or correct where the document actually is before
-// OCR runs on it: drag the corners to fit just the card/paper, use the quick
-// rotate buttons for a sideways photo, or the slider to straighten a slight
-// tilt. Auto-Detect Edges re-runs the heuristic if a rotation throws it off.
 function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
   const [quickRotation, setQuickRotation] = useState(0);
   const [fineRotation, setFineRotation] = useState(0);
@@ -1057,8 +1020,6 @@ function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
   const stageRef = useRef(null);
   const dragRef = useRef(null);
 
-  // Rebuild the rotated working canvas whenever rotation changes, and
-  // re-suggest a crop rectangle for the new orientation.
   useEffect(() => {
     const totalDegrees = quickRotation + fineRotation;
     const rotated = rotateCanvas(sourceCanvas, totalDegrees);
@@ -1066,7 +1027,6 @@ function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
     setRect(autoDetectCardBounds(rotated));
   }, [sourceCanvas, quickRotation, fineRotation]);
 
-  // Fit the working canvas into a reasonable modal size.
   useEffect(() => {
     if (!workingCanvas) return;
     const maxW = Math.min(720, window.innerWidth - 48);
@@ -1078,7 +1038,6 @@ function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
     });
   }, [workingCanvas]);
 
-  // Redraw the preview + crop overlay whenever anything relevant changes.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || !workingCanvas || !rect || stageSize.width === 0) return;

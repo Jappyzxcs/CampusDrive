@@ -7,19 +7,37 @@ import { ROLE_HOME_ROUTE } from '../../constants/roles';
 export default function StaffAuth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth(); 
+  // THE FIX: Brought in resetPassword
+  const { login, resetPassword } = useAuth(); 
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(''); 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // NEW: State for the password visibility toggle
   const [showPassword, setShowPassword] = useState(false);
+
+  // THE FIX: Added handleForgotPassword
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setError('Please type your staff email address first to reset your password.');
+      setSuccess('');
+      return;
+    }
+    try {
+      setError('');
+      setSuccess('');
+      await resetPassword(email);
+      setSuccess('Password reset link sent! Please check your email inbox.');
+    } catch (err) {
+      setError('Failed to send reset email. Make sure your email is registered.');
+    }
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setSuccess('');
     setIsSubmitting(true);
     
     try {
@@ -62,15 +80,16 @@ export default function StaffAuth() {
             <label htmlFor="password" className="text-sm font-medium text-slate-700">
               Password
             </label>
-            <a
-              href="#"
+            {/* THE FIX: Replaced empty link with active button */}
+            <button
+              type="button"
+              onClick={handleForgotPassword}
               className="text-xs font-medium text-slate-700 hover:text-slate-900"
             >
               Forgot password?
-            </a>
+            </button>
           </div>
           
-          {/* THE FIX: Password input wrapper with the eye toggle */}
           <div className="relative">
             <input
               id="password"
@@ -102,6 +121,12 @@ export default function StaffAuth() {
             </button>
           </div>
         </div>
+
+        {success && (
+          <p role="alert" className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 border border-green-200">
+            {success}
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { mockDataService } from '../../services/mockDataService';
 import { DataTable } from '../../components/tables/DataTable';
 import { SearchFilterBar } from '../../components/tables/SearchFilterBar';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -11,6 +10,10 @@ import { DashboardCard } from '../../components/cards/DashboardCard';
 import { Timeline } from '../../components/common/Timeline';
 import { Modal } from '../../components/common/Modal';
 import { ROUTES } from '../../constants/routes';
+
+// THE FIX: Import real Firebase tools instead of mock data
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -21,10 +24,15 @@ const STATUS_OPTIONS = [
 
 export default function ApplicationStatusPage() {
   const { user } = useAuth();
-  const { data: applications, isLoading } = useAsyncData(
-    () => mockDataService.getApplications({ applicantId: user.id }),
-    [user.id],
-  );
+  
+  // THE FIX: Query real applications assigned to this specific user's ID
+  const { data: applications, isLoading } = useAsyncData(async () => {
+    if (!user) return [];
+    const userId = user.id || user.uid; // Handle both ID property names
+    const q = query(collection(db, 'applications'), where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  }, [user]);
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');

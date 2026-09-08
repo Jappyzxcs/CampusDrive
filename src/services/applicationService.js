@@ -1,9 +1,54 @@
 import { db } from '../config/firebase';
-// Notice we added 'addDoc' to the end of this import line!
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion, addDoc } from 'firebase/firestore';
 
+// THE FIX: Better compression that handles PDFs and image loading fallbacks safely
+export const compressImageToBase64 = (file, maxDimension = 1000, quality = 0.6) => {
+  return new Promise((resolve) => {
+    if (!file) return resolve(null);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const rawData = event.target.result;
+
+      // If it's a PDF, do not try to draw it on an image canvas. Just return the raw Base64.
+      if (file.type === 'application/pdf') {
+        return resolve(rawData);
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let { width, height } = img;
+
+        // Scale down proportionally to keep file size small (under 1MB Firestore limit)
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      
+      // Fallback: If drawing the image fails for any reason, just return the raw data
+      img.onerror = () => resolve(rawData);
+      img.src = rawData;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+};
+
 export const applicationService = {
-  // 1. Fetch all applications that need GSU review
   async getPendingApplications() {
     const q = query(
       collection(db, 'applications'), 
@@ -13,7 +58,6 @@ export const applicationService = {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   },
 
-  // 2. Fetch a specific application for the Review page
   async getApplicationById(id) {
     const docRef = doc(db, 'applications', id);
     const docSnap = await getDoc(docRef);
@@ -21,7 +65,6 @@ export const applicationService = {
     return { id: docSnap.id, ...docSnap.data() };
   },
 
-  // 3. Fetch the associated vehicle data
   async getVehicleById(id) {
     const docRef = doc(db, 'vehicles', id);
     const docSnap = await getDoc(docRef);
@@ -29,7 +72,6 @@ export const applicationService = {
     return { id: docSnap.id, ...docSnap.data() };
   },
 
-  // 4. Update status and append to the timeline array
   async updateApplicationStatus(id, newStatus, notes, reviewerName) {
     const docRef = doc(db, 'applications', id);
     
@@ -47,7 +89,6 @@ export const applicationService = {
     });
   },
 
-  // 5. NEW: Fetch all registered vehicles for the Admin master list
   async getAllVehicles() {
     try {
       const snapshot = await getDocs(collection(db, 'vehicles'));
@@ -58,13 +99,11 @@ export const applicationService = {
     }
   },
 
-  // 6. NEW: Update a vehicle's campus access status (e.g., revoking it)
   async updateVehicleStatus(id, newStatus) {
     const docRef = doc(db, 'vehicles', id);
     await updateDoc(docRef, { status: newStatus });
   },
 
-  // 7. NEW: Create a brand new application (This is what we were missing!)
   async createApplication(applicationData) {
     try {
       const docRef = await addDoc(collection(db, 'applications'), applicationData);
@@ -75,7 +114,6 @@ export const applicationService = {
     }
   },
 
-  // 8. NEW: Hand off an approved application to the BAO by creating a vehicle record
   async createVehicle(vehicleData) {
     try {
       const docRef = await addDoc(collection(db, 'vehicles'), vehicleData);
@@ -85,5 +123,4 @@ export const applicationService = {
       throw error;
     }
   }
-
 };

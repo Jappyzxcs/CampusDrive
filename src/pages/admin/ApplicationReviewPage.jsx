@@ -10,6 +10,7 @@ import { Icon } from '../../components/common/Icon';
 import { Skeleton } from '../../components/common/LoadingSkeleton';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
+import { Modal } from '../../components/common/Modal'; // THE FIX: Imported Modal
 
 export default function ApplicationReviewPage() {
   const { applicationId } = useParams();
@@ -25,6 +26,20 @@ export default function ApplicationReviewPage() {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [decision, setDecision] = useState(null);
+
+  // THE FIX: State to handle the Image Viewer popup
+  const [viewingImage, setViewingImage] = useState(null);
+  const [viewingTitle, setViewingTitle] = useState('');
+
+  // THE FIX: Function to open the image modal
+  const openDoc = (title, url) => {
+    if (!url) {
+      showToast(`No ${title} was found for this application.`, { type: 'warning' });
+      return;
+    }
+    setViewingTitle(title);
+    setViewingImage(url);
+  };
 
   async function handleDecision(nextDecision) {
     if (nextDecision === 'rejected' && !notes.trim()) {
@@ -53,7 +68,6 @@ export default function ApplicationReviewPage() {
           make: application.vehicleDetails?.vehicleType || 'N/A',
           model: '', 
           type: application.vehicleDetails?.vehicleType || 'Other',
-          // THE FIX: Set to for_payment so BAO knows they need to collect cash
           status: 'for_payment', 
           applicationId: applicationId,
           registrationDate: new Date().toISOString()
@@ -102,6 +116,7 @@ export default function ApplicationReviewPage() {
   const vDetails = application.vehicleDetails || {};
   const nlpData = application.nlpExtractedData || {};
   const namesMatched = application.nlpNamesMatched ?? false;
+  const docs = application.documentUrls || {}; // THE FIX: Safely grab the Base64 URLs
 
   const timelineEvents = application.timeline || [
     { 
@@ -188,6 +203,41 @@ export default function ApplicationReviewPage() {
         </DashboardCard>
       </div>
 
+      {/* THE FIX: Replaced Dummy Toast buttons with real openDoc functions */}
+      <DashboardCard title="Attached Documents">
+        <p className="text-sm text-slate-500 mb-4">
+          Review the physical copies submitted by the applicant.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" onClick={() => openDoc("Driver's License", docs.license)} className="btn-secondary text-sm">
+             Driver's License
+          </button>
+          <button type="button" onClick={() => openDoc("Official Receipt (OR)", docs.or)} className="btn-secondary text-sm">
+             Official Receipt (OR)
+          </button>
+          <button type="button" onClick={() => openDoc("Cert. of Registration (CR)", docs.cr)} className="btn-secondary text-sm">
+             Cert. of Registration (CR)
+          </button>
+          
+          {/* THESE ONLY SHOW UP IF THEY WERE ACTUALLY UPLOADED */}
+          {docs.authLetter && (
+             <button type="button" onClick={() => openDoc("Authorization Letter", docs.authLetter)} className="btn-secondary text-sm border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
+               Authorization Letter
+             </button>
+          )}
+          {docs.deedOfSale && (
+             <button type="button" onClick={() => openDoc("Deed of Sale", docs.deedOfSale)} className="btn-secondary text-sm border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
+               Deed of Sale
+             </button>
+          )}
+          {docs.companyCert && (
+             <button type="button" onClick={() => openDoc("Company Certificate", docs.companyCert)} className="btn-secondary text-sm border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
+               Company Certificate
+             </button>
+          )}
+        </div>
+      </DashboardCard>
+
       <DashboardCard title="Timeline">
         <Timeline steps={timelineEvents} />
       </DashboardCard>
@@ -221,6 +271,22 @@ export default function ApplicationReviewPage() {
           </div>
         </DashboardCard>
       )}
+
+      {/* THE FIX: Smart Popup Modal that displays either an image or a PDF viewer */}
+      <Modal isOpen={!!viewingImage} onClose={() => setViewingImage(null)} title={viewingTitle} size="xl">
+        <div className="flex justify-center bg-slate-100 rounded-lg p-2 min-h-[300px] items-center w-full">
+          {viewingImage ? (
+            viewingImage.startsWith('data:application/pdf') ? (
+              <iframe src={viewingImage} className="w-full h-[70vh] rounded shadow-sm" title={viewingTitle} />
+            ) : (
+              <img src={viewingImage} alt={viewingTitle} className="max-h-[70vh] object-contain rounded shadow-sm" />
+            )
+          ) : (
+            <p className="text-slate-400 text-sm">Document loading...</p>
+          )}
+        </div>
+      </Modal>
+
     </div>
   );
 }

@@ -7,7 +7,8 @@ import { ROLE_HOME_ROUTE, ROLES } from '../../constants/roles';
 export default function VisitorAuth() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, register } = useAuth();
+  // THE FIX: Brought in resetPassword
+  const { login, register, resetPassword } = useAuth();
   
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -15,10 +16,11 @@ export default function VisitorAuth() {
   const [formData, setFormData] = useState({
     email: '', password: '', fullName: '', phone: ''
   });
+  
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(''); // NEW: Added success state
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // NEW: Password validation checks
   const hasMinLength = formData.password.length >= 8;
   const hasUppercase = /[A-Z]/.test(formData.password);
   const hasNumberOrSymbol = /[0-9!@#$%^&*]/.test(formData.password);
@@ -27,9 +29,27 @@ export default function VisitorAuth() {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  // THE FIX: Added handleForgotPassword for visitors
+  const handleForgotPassword = async () => {
+    if (!formData.email) {
+      setError('Please type your email address first to reset your password.');
+      setSuccess('');
+      return;
+    }
+    try {
+      setError('');
+      setSuccess('');
+      await resetPassword(formData.email);
+      setSuccess('Password reset link sent! Please check your email inbox.');
+    } catch (err) {
+      setError('Failed to send reset email. Make sure your email is registered.');
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
+    setSuccess('');
     setIsSubmitting(true);
     
     try {
@@ -38,7 +58,6 @@ export default function VisitorAuth() {
         const redirectTo = location.state?.from?.pathname ?? ROLE_HOME_ROUTE[authenticatedUser.role] ?? '/visitor/dashboard';
         navigate(redirectTo, { replace: true });
       } else {
-        // Enforce strong password before registering
         if (!hasMinLength || !hasUppercase || !hasNumberOrSymbol) {
           throw new Error("Please meet all password requirements.");
         }
@@ -59,6 +78,7 @@ export default function VisitorAuth() {
   const toggleView = () => {
     setIsLogin(!isLogin);
     setError('');
+    setSuccess('');
     setShowPassword(false);
   };
 
@@ -113,10 +133,15 @@ export default function VisitorAuth() {
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <label htmlFor="password" className="text-sm font-medium text-slate-700">Password</label>
+            {/* THE FIX: Replaced empty link with active button */}
             {isLogin && (
-              <a href="#" className="text-xs font-medium text-green-700 hover:text-green-800">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-xs font-medium text-green-700 hover:text-green-800"
+              >
                 Forgot password?
-              </a>
+              </button>
             )}
           </div>
           
@@ -162,6 +187,12 @@ export default function VisitorAuth() {
             </ul>
           )}
         </div>
+
+        {success && (
+          <p role="alert" className="rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 border border-green-200">
+            {success}
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="rounded-md bg-danger-50 px-3 py-2 text-sm text-danger-700">

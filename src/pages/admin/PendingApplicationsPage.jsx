@@ -17,39 +17,19 @@ const STATUS_OPTIONS = [
 export default function PendingApplicationsPage() {
   const navigate = useNavigate();
   
-  // Fetch real data from Firestore
-  const { data: realApplications, isLoading } = useAsyncData(() => applicationService.getPendingApplications(), []);
+  // THE FIX: Directly grab the real Firebase data as "applications"
+  const { data: applications, isLoading } = useAsyncData(() => applicationService.getPendingApplications(), []);
   
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
-  // INJECT DUMMY DATA: We combine the real Firebase data with our fake test rows
-  const applications = useMemo(() => {
-    const dummyApplication1 = {
-      id: 'test-app-001',
-      applicantName: 'Juan Dela Cruz',
-      type: 'New Registration',
-      submittedDate: '2026-08-28',
-      status: 'pending'
-    };
-
-    const dummyApplication2 = {
-      id: 'test-app-002',
-      applicantName: 'Maria Santos',
-      type: 'Renewal',
-      submittedDate: '2026-08-29', 
-      status: 'under_review'
-    };
-
-    return [dummyApplication1, dummyApplication2, ...(realApplications || [])];
-  }, [realApplications]);
-
+  // Directly filter the live Firebase applications
   const filtered = useMemo(() => {
     if (!applications) return [];
     return applications
       .filter((a) => ['pending', 'under_review'].includes(a.status))
-      .filter((a) => a.applicantName.toLowerCase().includes(debouncedSearch.toLowerCase()))
+      .filter((a) => a.applicantName?.toLowerCase().includes(debouncedSearch.toLowerCase()))
       .filter((a) => !status || a.status === status);
   }, [applications, debouncedSearch, status]);
 
