@@ -5,6 +5,7 @@ import Tesseract from 'tesseract.js';
 import levenshtein from 'fast-levenshtein';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase'; 
+import { aiService } from '../../services/aiService'; // THE FIX: Imported Roboflow
 
 export default function ScannerPage() {
   const { showToast } = useToast();
@@ -45,17 +46,50 @@ export default function ScannerPage() {
   }, [phase, showToast]);
 
   const cleanOCRText = (rawText) => {
-    return rawText
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '') 
-      .replace(/O(?=\d)/g, '0')  
-      .replace(/(?<=[A-Z])0/g, 'O'); 
-  };
+    // 1. Remove all spaces and make uppercase so "LB 0061" becomes "LB0061"
+    let text = rawText.toUpperCase().replace(/\s+/g, '');
 
+    // 2. Fix the known hallucination where Tesseract sees "B" as "8"
+    text = text.replace(/L8/g, 'LB');
+
+    // 3. The Strict Pattern Hunter
+    // This looks for EXACTLY 2 letters followed by EXACTLY 4 characters that are numbers
+    // (We also include O, I, Z, and S because blurry OCR often confuses 0, 1, 2, and 5)
+    const regex = /([A-Z]{2})([0-9OIZS]{4})/;
+    const match = text.match(regex);
+
+    if (match) {
+      const letters = match[1]; // e.g., "LB"
+      
+      // Auto-correct common blurry number hallucinations back into pure digits
+      const digits = match[2]
+        .replace(/O/g, '0')
+        .replace(/I/g, '1')
+        .replace(/Z/g, '2')
+        .replace(/S/g, '5');
+
+      return letters + digits; // Returns perfect "LB0061"
+    }
+
+    // 4. THE MAGIC BULLET: If it doesn't find the exact pattern, return null.
+    // This forces the scanner to ignore the noise (like "VEHICLEPASS") and keep looping!
+    return null; 
+  };
   const processFrame = async () => {
+    // 1. Are we supposed to be scanning?
     if (!isScanningRef.current || !videoRef.current) return;
 
     const video = videoRef.current;
+    
+    // DEBUG: See if the loop is running at all
+    console.log(`📹 Camera Check -> Width: ${video.videoWidth}, State: ${video.readyState}`);
+
+    // THE FIX: Relaxed the check. Just make sure the video has width!
+    if (video.videoWidth === 0) {
+      setTimeout(processFrame, 500);
+      return;
+    }
+
     const canvas = document.createElement('canvas');
     const cropWidth = video.videoWidth * 0.6;
     const cropHeight = video.videoHeight * 0.3;
@@ -68,16 +102,31 @@ export default function ScannerPage() {
     ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
 
     try {
+      const base64Frame = canvas.toDataURL('image/jpeg', 0.7);
+
+      console.log("📷 Snapped photo. Sending to Roboflow...");
+
+      const aiResult = await aiService.verifySticker(base64Frame);
+
+      console.log("🤖 Roboflow Response:", aiResult);
+
+      if (!aiResult.success || !aiResult.isDetected) {
+        setTimeout(processFrame, 800);
+        return;
+      }
+
+      console.log("✅ STICKER DETECTED! Running OCR...");
+
       const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
       const cleanedText = cleanOCRText(text);
+      console.log("📝 OCR Read:", cleanedText);
 
-      // If text is unreadable, retry automatically after 1 second
       if (!cleanedText || cleanedText.length < 4) {
+        console.log("⚠️ OCR Text too short or blurry. Retrying...");
         setTimeout(processFrame, 1000);
         return;
       }
 
-      // If we got a readable string, check Firebase
       const querySnapshot = await getDocs(collection(db, 'approved_vehicles'));
       const vehicles = querySnapshot.docs.map(doc => doc.data());
 
@@ -111,13 +160,13 @@ export default function ScannerPage() {
           status: 'valid', 
           plateNumber: matchedVehicle.plateNumber || 'N/A', 
           owner: matchedVehicle.ownerName || 'Authorized User', 
-          make: matchedVehicle.vehicleMake || 'N/A', 
+          make: matchedVehicle.vehicleMake || matchedVehicle.make || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
+          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null, // Pulls the uploaded proof
           alert: 'Vehicle Authorized.' 
         };
       }
 
-      // Stop the loop and show the result
       isScanningRef.current = false;
       setResult(finalResult);
       setPhase('result');
@@ -128,7 +177,6 @@ export default function ScannerPage() {
 
     } catch (error) {
       console.error("Verification Error:", error);
-      // On engine error, pause briefly then retry
       setTimeout(processFrame, 1500);
     }
   };
@@ -141,7 +189,7 @@ export default function ScannerPage() {
       isScanningRef.current = true;
       setPhase('scanning');
       setResult(null);
-      processFrame(); // Kick off the recursive loop
+      processFrame(); 
     }
   }
 
@@ -237,6 +285,18 @@ export default function ScannerPage() {
               <ResultRow label="Sticker Serial" value={result.serial} />
               <ResultRow label="Owner" value={result.owner} />
               <ResultRow label="Vehicle" value={result.make} />
+
+              {/* Vehicle Registration Photo Proof Preview */}
+              {result.vehicleImage && (
+                <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Registered Vehicle Proof</span>
+                  <img 
+                    src={result.vehicleImage} 
+                    alt="Vehicle Proof" 
+                    className="h-36 w-full rounded-xl object-cover border border-slate-300 shadow-inner"
+                  />
+                </div>
+              )}
             </div>
 
           </div>

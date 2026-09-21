@@ -7,6 +7,15 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
-    host: true, 
+    host: true,
+    // THE FIX: Intercept Roboflow API calls to bypass CORS
+    proxy: {
+      '/roboflow-api': {
+        target: 'https://serverless.roboflow.com',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/roboflow-api/, '')
+      }
+    }
   },
 });

@@ -31,6 +31,18 @@ export function VerificationResultCard({ result }) {
         <Row label="Owner" value={result.ownerName || '—'} />
         {result.vehicleMake && <Row label="Vehicle" value={result.vehicleMake} />}
         {result.confidence != null && <Row label="Match Confidence" value={`${Math.round(result.confidence * 100)}%`} />}
+        
+        {/* Registration Proof Photo */}
+        {(result.vehicleImage || result.vehicleImageUrl) && (
+          <div className="mt-4 pt-3 border-t border-white/20 flex flex-col items-center">
+            <span className="text-xs font-bold text-white/80 uppercase tracking-wider mb-2">Vehicle Proof Photo</span>
+            <img 
+              src={result.vehicleImage || result.vehicleImageUrl} 
+              alt="Registered Vehicle" 
+              className="h-36 w-full rounded-lg object-cover border border-white/30 shadow-md"
+            />
+          </div>
+        )}
       </div>
     </div>
   );
