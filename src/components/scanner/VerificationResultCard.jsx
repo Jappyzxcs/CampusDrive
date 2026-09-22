@@ -1,8 +1,5 @@
 import { Icon } from '../common/Icon';
 
-// Every possible scanner outcome from the brief, mapped to a tone
-// (valid=green, everything else=red — deliberately binary so it reads
-// instantly in direct sunlight) plus the icon/label to show.
 const RESULT_CONFIG = {
   valid: { tone: 'valid', label: 'VALID', icon: 'check' },
   expired: { tone: 'invalid', label: 'EXPIRED REGISTRATION', icon: 'alert' },
@@ -15,6 +12,12 @@ const RESULT_CONFIG = {
 const TONE_STYLES = {
   valid: 'bg-accent-600 text-white',
   invalid: 'bg-danger-600 text-white',
+};
+
+// Formats the ISO string from Firebase into "09/22/26"
+const formatDate = (isoString) => {
+  if (!isoString) return '—';
+  return new Date(isoString).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
 };
 
 export function VerificationResultCard({ result }) {
@@ -30,6 +33,15 @@ export function VerificationResultCard({ result }) {
         <Row label="Sticker Serial" value={result.stickerSerial || '—'} />
         <Row label="Owner" value={result.ownerName || '—'} />
         {result.vehicleMake && <Row label="Vehicle" value={result.vehicleMake} />}
+        
+        {/* COMBINED: Validity Period */}
+        {(result.dateIssued && result.validUntil) && (
+          <Row 
+            label="Sticker Validity" 
+            value={`${formatDate(result.dateIssued)} → ${formatDate(result.validUntil)}`} 
+          />
+        )}
+        
         {result.confidence != null && <Row label="Match Confidence" value={`${Math.round(result.confidence * 100)}%`} />}
         
         {/* Registration Proof Photo */}

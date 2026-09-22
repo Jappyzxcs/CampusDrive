@@ -70,7 +70,10 @@ export default function ApplicationReviewPage() {
           type: application.vehicleDetails?.vehicleType || 'Other',
           status: 'for_payment', 
           applicationId: applicationId,
-          registrationDate: new Date().toISOString()
+          registrationDate: new Date().toISOString(),
+          
+          // THE FIX: Explicitly hand the image URL over to the vehicles database!
+          vehicleImageUrl: application.vehicleImageUrl || application.documentUrls?.vehiclePhoto || ""
         };
         await applicationService.createVehicle(vehicleData);
       }

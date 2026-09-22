@@ -156,13 +156,24 @@ export default function ScannerPage() {
           alert: 'Institutional accreditation expired.' 
         };
       } else {
+        // Calculate expiration (1 year from issue date)
+        const issued = matchedVehicle.dateIssued || null;
+        let valid = null;
+        if (issued) {
+          const d = new Date(issued);
+          d.setFullYear(d.getFullYear() + 1);
+          valid = d.toISOString();
+        }
+
         finalResult = { 
           status: 'valid', 
           plateNumber: matchedVehicle.plateNumber || 'N/A', 
           owner: matchedVehicle.ownerName || 'Authorized User', 
           make: matchedVehicle.vehicleMake || matchedVehicle.make || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
-          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null, // Pulls the uploaded proof
+          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null, 
+          dateIssued: issued, // NEW
+          validUntil: valid,  // NEW
           alert: 'Vehicle Authorized.' 
         };
       }
@@ -280,11 +291,19 @@ export default function ScannerPage() {
               {result.status === 'valid' ? 'Allow Entry' : result.alert}
             </p>
 
-            <div className="w-full rounded-2xl bg-white p-5 text-left shadow-xl">
+           <div className="w-full rounded-2xl bg-white p-5 text-left shadow-xl">
               <ResultRow label="Plate Number" value={result.plateNumber} highlight status={result.status} />
               <ResultRow label="Sticker Serial" value={result.serial} />
               <ResultRow label="Owner" value={result.owner} />
               <ResultRow label="Vehicle" value={result.make} />
+              
+             {/* COMBINED: Validity Period (Short Numeric Format) */}
+              {(result.dateIssued && result.validUntil) && (
+                <ResultRow 
+                  label="Validity" 
+                  value={`${new Date(result.dateIssued).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })} → ${new Date(result.validUntil).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })}`} 
+                />
+              )}
 
               {/* Vehicle Registration Photo Proof Preview */}
               {result.vehicleImage && (

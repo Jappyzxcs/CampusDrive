@@ -717,11 +717,9 @@ export default function VehicleRegistrationPage() {
   async function handleSubmitFinal(event) {
     event.preventDefault();
     
-    // Check if the AI extracted name matches their actual LSPU account name
     const accountName = user?.fullName || user?.name || '';
     const matchesAccountName = namesMatch(accountName, extractedData.licenseName) || namesMatch(accountName, extractedData.crName);
     
-    // THE FIX: Included Company Certificate as a valid override document
     if (!matchesAccountName && !docs.authLetter && !docs.deedOfSale && !docs.companyCert) {
       showToast('Document names do not match your account name. You MUST upload an Authorization Letter, Deed of Sale, or Company Certificate below.', { type: 'danger' });
       return; 
@@ -731,8 +729,8 @@ export default function VehicleRegistrationPage() {
     showToast('Processing documents... Please wait.', { type: 'info' });
     
     try {
-      // Compress documents to lightweight Base64 strings (No Blaze plan needed!)
-      const [licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
+      const [vehiclePhotoUrl, licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
+        compressImageToBase64(vehiclePhotos[0] || null), 
         compressImageToBase64(docs.license),
         compressImageToBase64(docs.or),
         compressImageToBase64(docs.cr),
@@ -742,6 +740,7 @@ export default function VehicleRegistrationPage() {
       ]);
 
       const documentUrls = {
+        vehiclePhoto: vehiclePhotoUrl,
         license: licenseUrl,
         or: orUrl,
         cr: crUrl,
@@ -759,7 +758,8 @@ export default function VehicleRegistrationPage() {
         nlpExtractedData: extractedData,
         nlpNamesMatched: nameMatchResult,
         userId: user?.uid || user?.id || 'anonymous',
-        documentUrls: documentUrls // Stored directly in Firestore!
+        documentUrls: documentUrls,
+        vehicleImageUrl: vehiclePhotoUrl // Attached at root level for easy lookup
       };
 
       await applicationService.createApplication(applicationData);

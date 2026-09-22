@@ -2,16 +2,22 @@ import { db } from '../config/firebase';
 import { collection, query, where, getDocs, doc, getDoc, updateDoc, arrayUnion, addDoc } from 'firebase/firestore';
 
 // THE FIX: Better compression that handles PDFs and image loading fallbacks safely
-export const compressImageToBase64 = (file, maxDimension = 1000, quality = 0.6) => {
+// THE FIX: Aggressive compression (800px, 50% quality) + Debugging Logs
+export const compressImageToBase64 = (file, maxDimension = 800, quality = 0.5) => {
   return new Promise((resolve) => {
-    if (!file) return resolve(null);
+    if (!file) {
+      console.warn("⚠️ Compression skipped: No file provided.");
+      return resolve(null);
+    }
+
+    console.log(`🔄 Compressing: ${file.name} (Original Size: ${(file.size / 1024 / 1024).toFixed(2)} MB)`);
 
     const reader = new FileReader();
     reader.onload = (event) => {
       const rawData = event.target.result;
 
-      // If it's a PDF, do not try to draw it on an image canvas. Just return the raw Base64.
       if (file.type === 'application/pdf') {
+        console.log("📄 PDF detected, skipping image compression.");
         return resolve(rawData);
       }
 
@@ -20,7 +26,6 @@ export const compressImageToBase64 = (file, maxDimension = 1000, quality = 0.6) 
         const canvas = document.createElement('canvas');
         let { width, height } = img;
 
-        // Scale down proportionally to keep file size small (under 1MB Firestore limit)
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
             height = Math.round((height * maxDimension) / width);
@@ -36,14 +41,21 @@ export const compressImageToBase64 = (file, maxDimension = 1000, quality = 0.6) 
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        const finalBase64 = canvas.toDataURL('image/jpeg', quality);
+        console.log(`✅ Compression Success! New Size approx: ${(finalBase64.length / 1024).toFixed(2)} KB`);
+        resolve(finalBase64);
       };
       
-      // Fallback: If drawing the image fails for any reason, just return the raw data
-      img.onerror = () => resolve(rawData);
+      img.onerror = () => {
+        console.error("❌ Image canvas error, falling back to raw upload.");
+        resolve(rawData);
+      };
       img.src = rawData;
     };
-    reader.onerror = () => resolve(null);
+    reader.onerror = () => {
+      console.error("❌ FileReader failed!");
+      resolve(null);
+    };
     reader.readAsDataURL(file);
   });
 };
