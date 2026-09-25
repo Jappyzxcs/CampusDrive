@@ -7,6 +7,8 @@ import { DashboardCard } from '../../components/cards/DashboardCard';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
 import { applicationService, compressImageToBase64 } from '../../services/applicationService';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'; // NEW IMPORTS
+import { db } from '../../config/firebase'; // NEW IMPORT
 import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'; 
@@ -538,6 +540,7 @@ export default function VehicleRegistrationPage() {
   const { user } = useAuth(); 
   
   const [currentStep, setCurrentStep] = useState(1);
+  const [isCheckingPlate, setIsCheckingPlate] = useState(false); // NEW LOADER
   const defaultRegistrantType = user?.role === 'faculty' ? 'Faculty' : 'Student';
   
   const [form, setForm] = useState({
@@ -657,11 +660,60 @@ export default function VehicleRegistrationPage() {
     return Object.keys(next).length === 0;
   }
 
-  function handleNextStep1(event) {
+  // THE FIX: Intercept step 1 to enforce the Blacklist & Account restriction 
+  async function handleNextStep1(event) {
     event.preventDefault();
-    if (validateStep1()) {
+    if (!validateStep1()) return;
+
+    setIsCheckingPlate(true);
+    
+    try {
+      const cleanPlate = form.plateNumber.replace(/\s+/g, '').toUpperCase();
+      const currentUserId = user?.uid || user?.id;
+
+      // Check if the Plate Number is Blacklisted (Blocks account hoppers)
+      const blacklistRef = doc(db, 'revoked_vehicles', cleanPlate);
+      const blacklistSnap = await getDoc(blacklistRef);
+
+      if (blacklistSnap.exists()) {
+        const data = blacklistSnap.data();
+        const lockoutDate = new Date(data.lockoutUntil);
+
+        if (new Date() < lockoutDate) {
+          showToast(`Registration blocked. Plate ${cleanPlate} is revoked until ${lockoutDate.toLocaleDateString()}.`, { type: 'danger' });
+          setIsCheckingPlate(false);
+          return; // Hard stop
+        }
+      }
+
+      // Check if the User Account has a revoked vehicle history
+      if (currentUserId) {
+        const userRevokedQ = query(collection(db, 'revoked_vehicles'), where('ownerId', '==', currentUserId));
+        const userRevokedSnap = await getDocs(userRevokedQ);
+        
+        let activeLockout = null;
+        userRevokedSnap.forEach(doc => {
+          const data = doc.data();
+          if (new Date() < new Date(data.lockoutUntil)) {
+            activeLockout = new Date(data.lockoutUntil);
+          }
+        });
+
+        if (activeLockout) {
+          showToast(`Your account is restricted from registering vehicles until ${activeLockout.toLocaleDateString()} due to a prior revocation.`, { type: 'danger' });
+          setIsCheckingPlate(false);
+          return; // Hard stop
+        }
+      }
+
       setCurrentStep(2);
       window.scrollTo(0, 0);
+
+    } catch (error) {
+      console.error("Validation error:", error);
+      showToast("Error validating plate number with database.", { type: 'danger' });
+    } finally {
+      setIsCheckingPlate(false);
     }
   }
 
@@ -759,7 +811,7 @@ export default function VehicleRegistrationPage() {
         nlpNamesMatched: nameMatchResult,
         userId: user?.uid || user?.id || 'anonymous',
         documentUrls: documentUrls,
-        vehicleImageUrl: vehiclePhotoUrl // Attached at root level for easy lookup
+        vehicleImageUrl: vehiclePhotoUrl
       };
 
       await applicationService.createApplication(applicationData);
@@ -867,8 +919,8 @@ export default function VehicleRegistrationPage() {
               </div>
 
               <div className="flex justify-end border-t border-slate-100 pt-5">
-                <button type="submit" className="btn-primary">
-                  Next: Upload Documents
+                <button type="submit" className="btn-primary" disabled={isCheckingPlate}>
+                  {isCheckingPlate ? 'Checking Records...' : 'Next: Upload Documents'}
                 </button>
               </div>
             </>

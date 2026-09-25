@@ -5,7 +5,7 @@ import Tesseract from 'tesseract.js';
 import levenshtein from 'fast-levenshtein';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase'; 
-import { aiService } from '../../services/aiService'; // THE FIX: Imported Roboflow
+import { aiService } from '../../services/aiService';
 
 export default function ScannerPage() {
   const { showToast } = useToast();
@@ -38,7 +38,7 @@ export default function ScannerPage() {
     }
 
     return () => {
-      isScanningRef.current = false; // Kill loop on unmount
+      isScanningRef.current = false;
       if (activeStream) {
         activeStream.getTracks().forEach(track => track.stop());
       }
@@ -46,45 +46,33 @@ export default function ScannerPage() {
   }, [phase, showToast]);
 
   const cleanOCRText = (rawText) => {
-    // 1. Remove all spaces and make uppercase so "LB 0061" becomes "LB0061"
     let text = rawText.toUpperCase().replace(/\s+/g, '');
-
-    // 2. Fix the known hallucination where Tesseract sees "B" as "8"
     text = text.replace(/L8/g, 'LB');
 
-    // 3. The Strict Pattern Hunter
-    // This looks for EXACTLY 2 letters followed by EXACTLY 4 characters that are numbers
-    // (We also include O, I, Z, and S because blurry OCR often confuses 0, 1, 2, and 5)
     const regex = /([A-Z]{2})([0-9OIZS]{4})/;
     const match = text.match(regex);
 
     if (match) {
-      const letters = match[1]; // e.g., "LB"
-      
-      // Auto-correct common blurry number hallucinations back into pure digits
+      const letters = match[1]; 
       const digits = match[2]
         .replace(/O/g, '0')
         .replace(/I/g, '1')
         .replace(/Z/g, '2')
         .replace(/S/g, '5');
 
-      return letters + digits; // Returns perfect "LB0061"
+      return letters + digits; 
     }
 
-    // 4. THE MAGIC BULLET: If it doesn't find the exact pattern, return null.
-    // This forces the scanner to ignore the noise (like "VEHICLEPASS") and keep looping!
     return null; 
   };
+
   const processFrame = async () => {
-    // 1. Are we supposed to be scanning?
     if (!isScanningRef.current || !videoRef.current) return;
 
     const video = videoRef.current;
     
-    // DEBUG: See if the loop is running at all
     console.log(`📹 Camera Check -> Width: ${video.videoWidth}, State: ${video.readyState}`);
 
-    // THE FIX: Relaxed the check. Just make sure the video has width!
     if (video.videoWidth === 0) {
       setTimeout(processFrame, 500);
       return;
@@ -128,7 +116,8 @@ export default function ScannerPage() {
       }
 
       const querySnapshot = await getDocs(collection(db, 'approved_vehicles'));
-      const vehicles = querySnapshot.docs.map(doc => doc.data());
+      // Mapped doc.id to the object so flaggingService can use it
+      const vehicles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       const matchedVehicle = vehicles.find(v => {
         if (!v.stickerSerial) return false;
@@ -139,6 +128,7 @@ export default function ScannerPage() {
       
       if (!matchedVehicle) {
         finalResult = { 
+          id: null,
           status: 'unregistered', 
           plateNumber: 'UNKNOWN', 
           owner: 'N/A', 
@@ -148,15 +138,15 @@ export default function ScannerPage() {
         };
       } else if (matchedVehicle.accreditationStatus === 'Expired') {
         finalResult = { 
+          id: matchedVehicle.id,
           status: 'expired', 
           plateNumber: matchedVehicle.plateNumber || 'N/A', 
-          owner: matchedVehicle.ownerName || 'Unknown', 
+          owner: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
           alert: 'Institutional accreditation expired.' 
         };
       } else {
-        // Calculate expiration (1 year from issue date)
         const issued = matchedVehicle.dateIssued || null;
         let valid = null;
         if (issued) {
@@ -166,14 +156,15 @@ export default function ScannerPage() {
         }
 
         finalResult = { 
+          id: matchedVehicle.id,
           status: 'valid', 
           plateNumber: matchedVehicle.plateNumber || 'N/A', 
-          owner: matchedVehicle.ownerName || 'Authorized User', 
+          owner: `${matchedVehicle.ownerName || 'Authorized User'} (${matchedVehicle.registrantType || 'Student'})`, 
           make: matchedVehicle.vehicleMake || matchedVehicle.make || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
           vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null, 
-          dateIssued: issued, // NEW
-          validUntil: valid,  // NEW
+          dateIssued: issued,
+          validUntil: valid,
           alert: 'Vehicle Authorized.' 
         };
       }
@@ -297,7 +288,6 @@ export default function ScannerPage() {
               <ResultRow label="Owner" value={result.owner} />
               <ResultRow label="Vehicle" value={result.make} />
               
-             {/* COMBINED: Validity Period (Short Numeric Format) */}
               {(result.dateIssued && result.validUntil) && (
                 <ResultRow 
                   label="Validity" 
@@ -305,7 +295,6 @@ export default function ScannerPage() {
                 />
               )}
 
-              {/* Vehicle Registration Photo Proof Preview */}
               {result.vehicleImage && (
                 <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Registered Vehicle Proof</span>

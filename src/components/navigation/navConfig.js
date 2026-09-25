@@ -1,9 +1,6 @@
 import { ROLES } from '../../constants/roles';
 import { ROUTES } from '../../constants/routes';
 
-// Icons are simple inline SVGs (see Sidebar.jsx) referenced by key here,
-// so nav config stays framework-agnostic and easy to scan/edit.
-
 const studentFacultyLinks = [
   { label: 'Dashboard', to: ROUTES.STUDENT_DASHBOARD, icon: 'home' },
   { label: 'Register a Vehicle', to: ROUTES.STUDENT_VEHICLE_REGISTRATION, icon: 'plus' },
@@ -13,7 +10,6 @@ const studentFacultyLinks = [
 ];
 
 export const NAV_CONFIG = {
-  // NEW: Both Student and Faculty share the same sidebar links
   [ROLES.STUDENT]: studentFacultyLinks,
   [ROLES.FACULTY]: studentFacultyLinks,
   
@@ -29,15 +25,14 @@ export const NAV_CONFIG = {
     { label: 'Visitor Approvals', to: ROUTES.ADMIN_VISITOR_APPROVALS, icon: 'idcard' },
     { label: 'User Management', to: ROUTES.ADMIN_USER_MANAGEMENT, icon: 'users' },
     { label: 'Entry Logs', to: ROUTES.ADMIN_ENTRY_LOGS, icon: 'log' },
-    { label: 'Reports', to: ROUTES.ADMIN_REPORTS, icon: 'chart' },
-    { label: 'Audit Logs', to: ROUTES.ADMIN_AUDIT_LOGS, icon: 'shield' },
+    // MERGED: One link opens the 3-tab hub (Analytics, Flags, Audits)
+    { label: 'Reports & Hub', to: ROUTES.ADMIN_REPORTS, icon: 'chart' }, 
     { label: 'Settings', to: ROUTES.ADMIN_SETTINGS, icon: 'settings' },
   ],
   [ROLES.BAO]: [
     { label: 'Dashboard', to: ROUTES.ADMIN_DASHBOARD, icon: 'home' },
     { label: 'Sticker Management', to: ROUTES.ADMIN_STICKER_MANAGEMENT, icon: 'sticker' },
-    { label: 'Vehicle Management', to: ROUTES.ADMIN_VEHICLE_MANAGEMENT, icon: 'car' },
-    { label: 'Reports', to: ROUTES.ADMIN_REPORTS, icon: 'chart' },
+    { label: 'Reports & Hub', to: ROUTES.ADMIN_REPORTS, icon: 'chart' },
   ],
   [ROLES.GUARD]: [
     { label: 'Dashboard', to: ROUTES.GUARD_DASHBOARD, icon: 'home' },

@@ -20,23 +20,27 @@ export default function ManualLookupPage() {
     setResult(null);
     
     try {
-      // 1. Clean the search input (e.g., turns "NBC 1234" into "NBC1234")
       const searchPlate = plate.replace(/\s+/g, '').toUpperCase();
       
-      // 2. Check the 'approved_vehicles' collection first (for valid or expired stickers)
       const approvedSnapshot = await getDocs(collection(db, 'approved_vehicles'));
-      const approvedVehicles = approvedSnapshot.docs.map(doc => doc.data());
+      const approvedVehicles = approvedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
-      // Find a match by cleaning the database plate numbers the exact same way
       const matchedApproved = approvedVehicles.find(v => 
         (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === searchPlate
       );
       
       if (matchedApproved) {
         if (matchedApproved.accreditationStatus === 'Expired') {
-           // ... (keep your existing expired payload)
+           setResult({ 
+             id: matchedApproved.id,
+             result: 'expired', 
+             plateNumber: matchedApproved.plateNumber || 'N/A', 
+             stickerSerial: matchedApproved.stickerSerial, 
+             ownerName: `${matchedApproved.ownerName || 'Unknown'} (${matchedApproved.registrantType || 'Student'})`, 
+             vehicleMake: matchedApproved.vehicleMake || 'N/A',
+             vehicleImageUrl: matchedApproved.vehicleImageUrl || ''
+           });
         } else {
-           // Calculate expiration (1 year from issue date)
            const issued = matchedApproved.dateIssued || null;
            let valid = null;
            if (issued) {
@@ -46,24 +50,23 @@ export default function ManualLookupPage() {
            }
 
            setResult({ 
+             id: matchedApproved.id,
              result: 'valid', 
              plateNumber: matchedApproved.plateNumber || 'N/A', 
              stickerSerial: matchedApproved.stickerSerial, 
-             ownerName: matchedApproved.ownerName || 'Authorized User', 
+             ownerName: `${matchedApproved.ownerName || 'Authorized User'} (${matchedApproved.registrantType || 'Student'})`, 
              vehicleMake: matchedApproved.vehicleMake || 'N/A',
              vehicleImageUrl: matchedApproved.vehicleImageUrl || '',
-             dateIssued: issued, // NEW
-             validUntil: valid   // NEW
+             dateIssued: issued, 
+             validUntil: valid   
            });
         }
         setIsSearching(false);
-        return; // Stop searching if we found a valid match
+        return; 
       }
       
-      // 3. If not found in approved, check the main 'vehicles' collection 
-      // This catches vehicles that are registered but haven't paid the BAO yet
       const vehiclesSnapshot = await getDocs(collection(db, 'vehicles'));
-      const allVehicles = vehiclesSnapshot.docs.map(doc => doc.data());
+      const allVehicles = vehiclesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       
       const matchedVehicle = allVehicles.find(v => 
         (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === searchPlate
@@ -71,16 +74,17 @@ export default function ManualLookupPage() {
       
       if (matchedVehicle) {
          setResult({
-           result: 'unregistered', // Triggers the red unregistered/pending warning
+           id: matchedVehicle.id,
+           result: 'unregistered', 
            plateNumber: matchedVehicle.plateNumber || 'N/A',
            stickerSerial: 'Pending Issuance',
-           ownerName: matchedVehicle.ownerName || 'Unknown',
+           ownerName: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
            vehicleMake: `${matchedVehicle.make || ''} ${matchedVehicle.model || ''}`.trim() || 'N/A',
            vehicleImageUrl: matchedVehicle.vehicleImageUrl || ''
          });
       } else {
-         // 4. Complete ghost (No record exists anywhere)
          setResult({
+           id: null,
            result: 'no_record',
            plateNumber: plate.toUpperCase(),
            stickerSerial: null,

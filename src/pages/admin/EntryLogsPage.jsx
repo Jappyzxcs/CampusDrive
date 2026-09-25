@@ -32,6 +32,18 @@ export default function EntryLogsPage() {
   const columns = [
     { key: 'timestamp', header: 'Time', render: (row) => new Date(row.timestamp).toLocaleString(), sortable: true },
     { key: 'plateNumber', header: 'Plate', sortable: true },
+    // NEW: Campus Entry Status/Type
+    { 
+      key: 'entryType', 
+      header: 'Entry Status', 
+      render: (row) => (
+        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
+          row.entryType === 'Visitor' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
+        }`}>
+          {row.entryType || 'Registered Vehicle'}
+        </span>
+      )
+    },
     { key: 'gate', header: 'Gate' },
     { key: 'guardName', header: 'Guard' },
     { key: 'result', header: 'Result', render: (row) => <StatusBadge status={row.result} /> },
@@ -40,8 +52,8 @@ export default function EntryLogsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold text-primary-900">Entry Logs</h2>
-        <p className="text-sm text-slate-500">Every sticker scan recorded at campus gates.</p>
+        <h2 className="text-xl font-semibold text-primary-900">Campus Entry Logs</h2>
+        <p className="text-sm text-slate-500">Every sticker scan and visitor entry recorded at campus gates.</p>
       </div>
 
       <DashboardCard>

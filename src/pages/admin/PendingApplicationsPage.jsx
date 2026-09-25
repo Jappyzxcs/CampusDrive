@@ -9,29 +9,21 @@ import { StatusBadge } from '../../components/common/StatusBadge';
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { ROUTES } from '../../constants/routes';
 
-const STATUS_OPTIONS = [
-  { value: 'pending', label: 'Pending' },
-  { value: 'under_review', label: 'Under Review' },
-];
-
 export default function PendingApplicationsPage() {
   const navigate = useNavigate();
   
-  // THE FIX: Directly grab the real Firebase data as "applications"
   const { data: applications, isLoading } = useAsyncData(() => applicationService.getPendingApplications(), []);
   
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
-  // Directly filter the live Firebase applications
+  // THE FIX: "Pending" and "Under Review" are now fully merged into a single queue
   const filtered = useMemo(() => {
     if (!applications) return [];
     return applications
       .filter((a) => ['pending', 'under_review'].includes(a.status))
-      .filter((a) => a.applicantName?.toLowerCase().includes(debouncedSearch.toLowerCase()))
-      .filter((a) => !status || a.status === status);
-  }, [applications, debouncedSearch, status]);
+      .filter((a) => a.applicantName?.toLowerCase().includes(debouncedSearch.toLowerCase()));
+  }, [applications, debouncedSearch]);
 
   const columns = [
     { key: 'applicantName', header: 'Applicant', sortable: true },
@@ -44,7 +36,7 @@ export default function PendingApplicationsPage() {
       render: (row) => (
         <button 
           onClick={(e) => {
-            e.stopPropagation(); // Prevents the row click from firing twice
+            e.stopPropagation(); 
             navigate(ROUTES.ADMIN_APPLICATION_REVIEW.replace(':applicationId', row.id));
           }}
           className="text-sm font-medium text-primary-700 hover:text-primary-900 transition-colors"
@@ -58,25 +50,23 @@ export default function PendingApplicationsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold text-primary-900">Pending Applications</h2>
-        <p className="text-sm text-slate-500">Review and approve or reject vehicle registration applications.</p>
+        <h2 className="text-xl font-semibold text-primary-900">Application Queue</h2>
+        <p className="text-sm text-slate-500">Review and manage vehicle registration applications.</p>
       </div>
 
       <DashboardCard>
+        {/* THE FIX: Removed the Status Filter dropdown completely */}
         <SearchFilterBar
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder="Search by applicant name…"
-          filters={[{ key: 'status', label: 'Status', options: STATUS_OPTIONS }]}
-          activeFilters={{ status }}
-          onFilterChange={(_, value) => setStatus(value)}
         />
         <DataTable
           columns={columns}
           rows={filtered}
           isLoading={isLoading}
           onRowClick={(row) => navigate(ROUTES.ADMIN_APPLICATION_REVIEW.replace(':applicationId', row.id))}
-          emptyTitle="No pending applications"
+          emptyTitle="Queue is empty"
           emptyDescription="You're all caught up."
         />
       </DashboardCard>

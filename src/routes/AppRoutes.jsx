@@ -35,8 +35,7 @@ import StickerManagementPage from '../pages/admin/StickerManagementPage';
 import VisitorApprovalsPage from '../pages/admin/VisitorApprovalsPage';
 import UserManagementPage from '../pages/admin/UserManagementPage';
 import EntryLogsPage from '../pages/admin/EntryLogsPage';
-import ReportsPage from '../pages/admin/ReportsPage';
-import AuditLogsPage from '../pages/admin/AuditLogsPage';
+import ReportsAndAuditPage from '../pages/admin/ReportsAndAuditPage'; // THE FIX: Replaced Reports & Audit
 import SettingsPage from '../pages/admin/SettingsPage';
 
 // --- GUARD ---
@@ -59,7 +58,6 @@ export const router = createBrowserRouter(
 
       {/* PROTECTED ROUTES */}
 
-      {/* UPDATED: Allow both STUDENT and FACULTY roles */}
       <Route element={<ProtectedRoute allowedRoles={[ROLES.STUDENT, ROLES.FACULTY]} />}>
         <Route element={<DashboardLayout />}>
           <Route path={ROUTES.STUDENT_DASHBOARD} element={<StudentDashboard />} handle={{ title: 'Dashboard' }} />
@@ -93,8 +91,7 @@ export const router = createBrowserRouter(
           <Route path={ROUTES.ADMIN_VISITOR_APPROVALS} element={<VisitorApprovalsPage />} handle={{ title: 'Visitor Approvals' }} />
           <Route path={ROUTES.ADMIN_USER_MANAGEMENT} element={<UserManagementPage />} handle={{ title: 'User Management' }} />
           <Route path={ROUTES.ADMIN_ENTRY_LOGS} element={<EntryLogsPage />} handle={{ title: 'Entry Logs' }} />
-          <Route path={ROUTES.ADMIN_REPORTS} element={<ReportsPage />} handle={{ title: 'Reports' }} />
-          <Route path={ROUTES.ADMIN_AUDIT_LOGS} element={<AuditLogsPage />} handle={{ title: 'Audit Logs' }} />
+          <Route path={ROUTES.ADMIN_REPORTS} element={<ReportsAndAuditPage />} handle={{ title: 'Reports & Hub' }} /> {/* THE FIX: Points to unified hub */}
           <Route path={ROUTES.ADMIN_SETTINGS} element={<SettingsPage />} handle={{ title: 'Settings' }} />
         </Route>
       </Route>
