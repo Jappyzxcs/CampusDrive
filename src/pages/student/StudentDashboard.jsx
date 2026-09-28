@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { mockDataService } from '../../services/mockDataService';
+import { notificationService } from '../../services/notificationService'; // NEW: Import Notifications
 import { StatCard } from '../../components/cards/StatCard';
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -19,7 +21,6 @@ function daysUntil(dateStr) {
 export default function StudentDashboard() {
   const { user } = useAuth();
   
-  // Directly mapping the fetched data to 'vehicles' and 'applications'
   const { data: vehicles, isLoading: vehiclesLoading } = useAsyncData(
     () => mockDataService.getVehicles({ ownerId: user.id }),
     [user.id],
@@ -37,10 +38,29 @@ export default function StudentDashboard() {
 
   const expiryDays = approvedVehicle ? daysUntil(approvedVehicle.expiryDate) : null;
 
+  // 🔵 AUTOMATED SYSTEM REMINDER (Expiration Warning)
+  useEffect(() => {
+    // Check if they have an approved vehicle that expires in 30 days or less (and hasn't expired yet)
+    if (approvedVehicle && expiryDays !== null && expiryDays <= 30 && expiryDays >= 0) {
+      const flagKey = `notified_expiry_${approvedVehicle.id}`;
+      
+      // Check local storage so we only send this notification once per browser session/device
+      if (!localStorage.getItem(flagKey)) {
+        notificationService.createNotification({
+          userId: user.id,
+          title: 'Expiration Warning',
+          message: `Reminder: Your campus sticker for ${approvedVehicle.plateNumber || 'your vehicle'} expires in ${expiryDays} days. Please prepare for renewal.`,
+          type: 'warning'
+        }).then(() => {
+          localStorage.setItem(flagKey, 'true'); // Flag it so it doesn't fire again on refresh
+        }).catch(err => console.error(err));
+      }
+    }
+  }, [approvedVehicle, expiryDays, user.id]);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
-        {/* Pulls the first name from fullName or name */}
         <h2 className="text-xl font-semibold text-primary-900">
           Welcome, {(user?.fullName || user?.name || 'User').split(' ')[0]}
         </h2>
@@ -98,11 +118,8 @@ export default function StudentDashboard() {
           )}
         </DashboardCard>
 
-        {/* SMART QUICK ACTIONS SIDEBAR */}
         <DashboardCard title="Quick Actions">
           <div className="flex flex-col gap-3">
-            
-            {/* Toggles between Register and Renew depending on vehicle status */}
             {!approvedVehicle ? (
               <Link to={ROUTES.STUDENT_VEHICLE_REGISTRATION} className="btn-primary justify-start">
                 Register a Vehicle
@@ -117,7 +134,6 @@ export default function StudentDashboard() {
               View Applications {pendingCount > 0 && `(${pendingCount} pending)`}
             </Link>
 
-            {/* Only show View Vehicle Details if they actually have a vehicle */}
             {approvedVehicle && (
               <Link to={ROUTES.STUDENT_VEHICLE_DETAILS.replace(':vehicleId', approvedVehicle.id)} className="btn-secondary justify-start">
                 View Vehicle Details

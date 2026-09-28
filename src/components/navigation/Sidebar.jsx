@@ -3,12 +3,22 @@ import { Icon } from '../common/Icon';
 import { Seal } from '../common/Seal';
 import { NAV_CONFIG } from './navConfig';
 import { ROLE_LABELS } from '../../constants/roles';
+import { useAuth } from '../../context/AuthContext';
+import { useAsyncData } from '../../hooks/useAsyncData';
+import { notificationService } from '../../services/notificationService';
 
-// quickInfo and onSignOut are both optional so this stays a drop-in
-// replacement for every existing caller (GSU/BAO/Guard shells that don't
-// pass them render exactly as before).
 export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
   const items = NAV_CONFIG[role] || [];
+  const { user } = useAuth();
+
+  // Silently fetch the user's notifications in the background
+  const { data: notifications } = useAsyncData(
+    () => (user?.id ? notificationService.getUserNotifications(user.id) : Promise.resolve([])), 
+    [user?.id]
+  );
+  
+  // Check if any of them are currently unread
+  const hasUnread = notifications?.some(n => !n.read);
 
   return (
     <>
@@ -52,16 +62,17 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
                 >
                   <Icon name={item.icon} className="h-5 w-5 flex-none" />
                   {item.label}
+                  
+                  {/* THE FIX: Inject the glowing red dot if there are unread notifications */}
+                  {item.label === 'Notifications' && hasUnread && (
+                    <span className="ml-auto h-2 w-2 flex-none rounded-full bg-danger-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" aria-hidden="true" />
+                  )}
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
 
-        {/* Optional quick-status card — e.g. { label: 'Sticker status',
-            value: 'Active · expires Jun 2027', tone: 'success' } for a
-            student, or a pending-count summary for staff roles. Pass
-            nothing to omit it entirely. */}
         {quickInfo && (
           <div className="mx-3 mb-3 rounded-lg bg-primary-800/60 px-3 py-2.5">
             <p className="text-[10px] uppercase tracking-wide text-primary-400">

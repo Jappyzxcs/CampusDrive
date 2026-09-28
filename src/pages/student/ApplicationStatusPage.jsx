@@ -17,7 +17,6 @@ import { db } from '../../config/firebase';
 
 const STATUS_OPTIONS = [
   { value: 'pending', label: 'Pending' },
-  { value: 'under_review', label: 'Under Review' },
   { value: 'approved', label: 'Approved' },
   { value: 'rejected', label: 'Rejected' },
 ];

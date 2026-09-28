@@ -30,7 +30,18 @@ export default function ManualLookupPage() {
       );
       
       if (matchedApproved) {
-        if (matchedApproved.accreditationStatus === 'Expired') {
+        if (matchedApproved.accreditationStatus === 'Revoked' || matchedApproved.status === 'revoked') {
+           setResult({ 
+             id: matchedApproved.id,
+             result: 'revoked', 
+             plateNumber: matchedApproved.plateNumber || 'N/A', 
+             stickerSerial: matchedApproved.stickerSerial, 
+             ownerName: `${matchedApproved.ownerName || 'Unknown'} (${matchedApproved.registrantType || 'Student'})`, 
+             vehicleMake: matchedApproved.vehicleMake || 'N/A',
+             vehicleImageUrl: matchedApproved.vehicleImageUrl || '',
+             revokeReason: matchedApproved.revokeReason || 'Multiple Campus Violations'
+           });
+        } else if (matchedApproved.accreditationStatus === 'Expired') {
            setResult({ 
              id: matchedApproved.id,
              result: 'expired', 

@@ -1,3 +1,4 @@
+import { notificationService } from '../../services/notificationService';
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAsyncData } from '../../hooks/useAsyncData';
@@ -42,10 +43,42 @@ export default function ApplicationReviewPage() {
   };
 
   async function handleDecision(nextDecision) {
-    if (nextDecision === 'rejected' && !notes.trim()) {
-      showToast('Please provide a reason for rejection in the notes.', { type: 'warning' });
-      return;
-    }
+    if (nextDecision === 'approved') {
+        const vehicleData = {
+          ownerName: application.applicantName,
+          ownerId: application.userId || 'anonymous',
+          plateNumber: application.vehicleDetails?.plateNumber || 'N/A',
+          make: application.vehicleDetails?.vehicleType || 'N/A',
+          model: '', 
+          type: application.vehicleDetails?.vehicleType || 'Other',
+          status: 'for_payment', 
+          applicationId: applicationId,
+          registrationDate: new Date().toISOString(),
+          vehicleImageUrl: application.vehicleImageUrl || application.documentUrls?.vehiclePhoto || ""
+        };
+        await applicationService.createVehicle(vehicleData);
+
+        // 🟢 SEND APPROVAL NOTIFICATION
+        if (application.userId) {
+          await notificationService.createNotification({
+            userId: application.userId,
+            title: 'Application Approved',
+            message: `Your vehicle registration for ${vehicleData.plateNumber} has been approved. Please proceed to BAO for payment.`,
+            type: 'success'
+          });
+        }
+
+      } else if (nextDecision === 'rejected') {
+        // 🔴 SEND REJECTION NOTIFICATION
+        if (application.userId) {
+          await notificationService.createNotification({
+            userId: application.userId,
+            title: 'Application Rejected',
+            message: `Your registration for ${application.vehicleDetails?.plateNumber || 'your vehicle'} was rejected. Reason: ${notes || 'Not specified'}. Please re-apply.`,
+            type: 'danger'
+          });
+        }
+      }
 
     setDecision(nextDecision);
     setIsSubmitting(true);

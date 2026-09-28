@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
-import { notificationService } from '../../services/notificationService'; // NEW: Real Service
+import { notificationService } from '../../services/notificationService'; 
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Skeleton } from '../../components/common/LoadingSkeleton';
@@ -25,20 +25,15 @@ function timeAgo(timestamp) {
 export default function NotificationsPage() {
   const { user } = useAuth();
   
-  // UPDATED: Fetch real notifications from Firestore
   const { data, isLoading } = useAsyncData(
-    () => (user?.id ? notificationService.getUserNotifications(user.id) : Promise.resolve([])), 
+    () => (user?.id ? notificationService.getUserNotifications(user?.id) : Promise.resolve([])), 
     [user?.id]
   );
   
   const [readIds, setReadIds] = useState(new Set());
 
-  // NEW: Handle database updates
   async function handleMarkAsRead(id) {
-    // 1. Instantly update the UI so it feels incredibly fast
     setReadIds((prev) => new Set(prev).add(id));
-    
-    // 2. Save the change to Firebase in the background
     try {
       await notificationService.markAsRead(id);
     } catch (error) {
@@ -57,14 +52,12 @@ export default function NotificationsPage() {
         <div className="flex flex-col gap-3">
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
         </div>
       ) : !data || data.length === 0 ? (
         <EmptyState title="You're all caught up" description="No notifications right now." />
       ) : (
         <div className="flex flex-col gap-3">
           {data.map((n) => {
-            // Checks if it is read in the database OR just clicked right now
             const isRead = n.read || readIds.has(n.id);
             const style = TYPE_STYLES[n.type] || TYPE_STYLES.info;
             

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { applicationService } from '../../services/applicationService'; 
+import { notificationService } from '../../services/notificationService'; // NEW: Import Notifications
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
@@ -27,7 +28,7 @@ export default function StickerManagementPage() {
     if (['car', 'suv', 'van', 'truck', 'auv'].includes(type)) {
       return 200;
     }
-    return 50; // Motorcycle default fee
+    return 50; 
   };
 
   const handleInputChange = (vehicleId, field, value) => {
@@ -58,7 +59,6 @@ export default function StickerManagementPage() {
     setProcessingId(vehicle.id);
 
     try {
-      // 1. Update the vehicle status in the 'vehicles' collection
       const vehicleRef = doc(db, 'vehicles', vehicle.id);
       await updateDoc(vehicleRef, {
         status: 'completed',
@@ -67,21 +67,30 @@ export default function StickerManagementPage() {
         paidAmount: Number(amount)
       });
 
-      // 2. Sync to 'approved_vehicles' so the Guard Scanner can verify it at the gate
       const approvedRef = doc(db, 'approved_vehicles', vehicle.id);
       await setDoc(approvedRef, {
         plateNumber: vehicle.plateNumber,
         ownerName: vehicle.ownerName || 'Unknown Owner',
         vehicleMake: `${vehicle.make || ''} ${vehicle.model || ''}`.trim(),
         stickerSerial: serialNumber,
-        vehicleImageUrl: vehicle.vehicleImageUrl || vehicle.imageUrl || vehicle.photoUrl || '', // Carries over the uploaded photo
+        vehicleImageUrl: vehicle.vehicleImageUrl || vehicle.imageUrl || vehicle.photoUrl || '', 
         accreditationStatus: 'Active',
         dateIssued: new Date().toISOString()
       }, { merge: true });
       
+      // 🟢 SEND STICKER ISSUED NOTIFICATION
+      const ownerId = vehicle.ownerId || vehicle.userId;
+      if (ownerId) {
+        await notificationService.createNotification({
+          userId: ownerId,
+          title: 'Sticker Issued',
+          message: `BAO has officially issued sticker ${serialNumber} for your vehicle ${vehicle.plateNumber}. You are good to go!`,
+          type: 'success'
+        });
+      }
+
       showToast(`Payment of ₱${amount} received! Sticker ${serialNumber} issued to ${vehicle.plateNumber}.`, { type: 'success' });
       
-      // THE FIX: Cleanly reload data in the background instead of forcing a full browser refresh!
       if (reload) await reload();
       setProcessingId(null);
 
@@ -100,7 +109,6 @@ export default function StickerManagementPage() {
           <p className="text-sm text-slate-500">Collect payment, adjust fees, and assign sticker serials.</p>
         </div>
         
-        {/* Physical Sticker Stock Toggle */}
         <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
           <span className={`text-sm font-semibold ${inStock ? 'text-slate-900' : 'text-danger-600'}`}>
             Physical Sticker Stock:
@@ -150,7 +158,6 @@ export default function StickerManagementPage() {
                     </p>
                   </div>
 
-                  {/* Inline Form Controls for Serial & Amount */}
                   <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
                     <div className="flex flex-col">
                       <label className="text-xs font-medium text-slate-500 mb-1">Sticker Serial</label>

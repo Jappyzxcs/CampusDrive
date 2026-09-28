@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/common/Icon';
-import Tesseract from 'tesseract.js';
+import { createWorker } from 'tesseract.js'; // UPDATED: Using persistent worker
 import levenshtein from 'fast-levenshtein';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore'; // UPDATED: Using live sync
 import { db } from '../../config/firebase'; 
 import { aiService } from '../../services/aiService';
 
@@ -14,7 +14,29 @@ export default function ScannerPage() {
   
   const videoRef = useRef(null);
   const isScanningRef = useRef(false);
+  const workerRef = useRef(null);
+  const vehiclesCacheRef = useRef([]);
 
+  // 1. ENGINE SETUP: Pre-warm OCR and sync DB into local memory
+  useEffect(() => {
+    // Keep a live local copy of the database. Updates instantly if BAO issues a new sticker.
+    const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
+      vehiclesCacheRef.current = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    });
+
+    // Spin up Tesseract once in the background
+    const initWorker = async () => {
+      workerRef.current = await createWorker('eng');
+    };
+    initWorker();
+
+    return () => {
+      unsubscribe();
+      if (workerRef.current) workerRef.current.terminate();
+    };
+  }, []);
+
+  // 2. CAMERA LIFECYCLE
   useEffect(() => {
     let activeStream = null;
 
@@ -59,10 +81,8 @@ export default function ScannerPage() {
         .replace(/I/g, '1')
         .replace(/Z/g, '2')
         .replace(/S/g, '5');
-
       return letters + digits; 
     }
-
     return null; 
   };
 
@@ -71,10 +91,8 @@ export default function ScannerPage() {
 
     const video = videoRef.current;
     
-    console.log(`📹 Camera Check -> Width: ${video.videoWidth}, State: ${video.readyState}`);
-
     if (video.videoWidth === 0) {
-      setTimeout(processFrame, 500);
+      setTimeout(processFrame, 300);
       return;
     }
 
@@ -91,34 +109,32 @@ export default function ScannerPage() {
 
     try {
       const base64Frame = canvas.toDataURL('image/jpeg', 0.7);
-
-      console.log("📷 Snapped photo. Sending to Roboflow...");
-
+      
+      // Send to Roboflow
       const aiResult = await aiService.verifySticker(base64Frame);
 
-      console.log("🤖 Roboflow Response:", aiResult);
-
       if (!aiResult.success || !aiResult.isDetected) {
-        setTimeout(processFrame, 800);
+        setTimeout(processFrame, 400); // Sped up retry interval
         return;
       }
 
-      console.log("✅ STICKER DETECTED! Running OCR...");
+      // Ensure OCR worker is ready
+      if (!workerRef.current) {
+        setTimeout(processFrame, 400);
+        return;
+      }
 
-      const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+      // Fast Local OCR Processing
+      const { data: { text } } = await workerRef.current.recognize(canvas);
       const cleanedText = cleanOCRText(text);
-      console.log("📝 OCR Read:", cleanedText);
 
       if (!cleanedText || cleanedText.length < 4) {
-        console.log("⚠️ OCR Text too short or blurry. Retrying...");
-        setTimeout(processFrame, 1000);
+        setTimeout(processFrame, 400);
         return;
       }
 
-      const querySnapshot = await getDocs(collection(db, 'approved_vehicles'));
-      // Mapped doc.id to the object so flaggingService can use it
-      const vehicles = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
+      // Fast Local Database Matching (0ms latency)
+      const vehicles = vehiclesCacheRef.current;
       const matchedVehicle = vehicles.find(v => {
         if (!v.stickerSerial) return false;
         return levenshtein.get(cleanedText, v.stickerSerial.toUpperCase()) <= 2;
@@ -135,6 +151,18 @@ export default function ScannerPage() {
           make: 'N/A', 
           serial: cleanedText, 
           alert: 'No record found in the database.' 
+        };
+      } else if (matchedVehicle.accreditationStatus === 'Revoked' || matchedVehicle.status === 'revoked') {
+        finalResult = { 
+          id: matchedVehicle.id,
+          status: 'revoked', 
+          plateNumber: matchedVehicle.plateNumber || 'N/A', 
+          owner: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
+          make: matchedVehicle.vehicleMake || 'N/A', 
+          serial: matchedVehicle.stickerSerial, 
+          revokeReason: matchedVehicle.revokeReason || 'Multiple Campus Violations',
+          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || null,
+          alert: 'Access Denied: Sticker Revoked' 
         };
       } else if (matchedVehicle.accreditationStatus === 'Expired') {
         finalResult = { 
@@ -179,7 +207,7 @@ export default function ScannerPage() {
 
     } catch (error) {
       console.error("Verification Error:", error);
-      setTimeout(processFrame, 1500);
+      setTimeout(processFrame, 800);
     }
   };
 
@@ -275,7 +303,7 @@ export default function ScannerPage() {
             </div>
             
             <h1 className="mb-2 text-5xl font-black uppercase tracking-tight !text-white drop-shadow-md">
-              {result.status === 'valid' ? 'Valid' : 'Invalid'}
+              {result.status === 'valid' ? 'ACTIVE' : result.status === 'revoked' ? 'REVOKED' : 'INVALID'}
             </h1>
             
             <p className="mb-8 text-xl font-bold !text-white/95 drop-shadow-sm">
@@ -287,6 +315,22 @@ export default function ScannerPage() {
               <ResultRow label="Sticker Serial" value={result.serial} />
               <ResultRow label="Owner" value={result.owner} />
               <ResultRow label="Vehicle" value={result.make} />
+              
+              {result.status === 'revoked' && result.revokeReason && (
+                <div className="mt-4 rounded-xl bg-red-50 p-4 border border-red-200 flex flex-col mb-2 shadow-sm">
+                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Reason for Revocation</span>
+                  {result.revokeReason.includes('. Last violation:') ? (
+                    <>
+                      <span className="text-lg font-bold text-red-800 leading-tight">Automatically revoked (3 strikes)</span>
+                      <span className="text-sm font-medium text-red-700 mt-1">
+                        <span className="font-bold">Last violation:</span> {result.revokeReason.split('. Last violation:')[1]?.trim()}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-lg font-bold text-red-800 leading-tight">{result.revokeReason}</span>
+                  )}
+                </div>
+              )}
               
               {(result.dateIssued && result.validUntil) && (
                 <ResultRow 

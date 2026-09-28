@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
-import { useAsyncData } from '../../hooks/useAsyncData';
+import { useState, useMemo, useEffect } from 'react';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { mockDataService } from '../../services/mockDataService';
 import { DataTable } from '../../components/tables/DataTable';
 import { SearchFilterBar } from '../../components/tables/SearchFilterBar';
 import { StatusBadge } from '../../components/common/StatusBadge';
 import { DashboardCard } from '../../components/cards/DashboardCard';
+
+// Firebase Imports
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 const RESULT_OPTIONS = [
   { value: 'valid', label: 'Valid' },
@@ -13,26 +15,45 @@ const RESULT_OPTIONS = [
   { value: 'unregistered', label: 'Unregistered' },
   { value: 'expired', label: 'Expired' },
   { value: 'duplicate', label: 'Duplicate' },
+  { value: 'revoked', label: 'Revoked' }
 ];
 
 export default function EntryLogsPage() {
-  const { data: logs, isLoading } = useAsyncData(() => mockDataService.getEntryLogs(), []);
+  const [logs, setLogs] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [result, setResult] = useState('');
   const debouncedSearch = useDebouncedValue(search);
 
+  // Fetch live entry logs from Firebase
+  useEffect(() => {
+    const fetchLogs = async () => {
+      setIsLoading(true);
+      try {
+        const snap = await getDocs(collection(db, 'entry_logs'));
+        const fetchedLogs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Sort newest first locally
+        fetchedLogs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setLogs(fetchedLogs);
+      } catch (error) {
+        console.error("Error fetching entry logs:", error);
+        setLogs([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchLogs();
+  }, []);
+
   const filtered = useMemo(() => {
-    if (!logs) return [];
     return logs
-      .filter((l) => l.plateNumber.toLowerCase().includes(debouncedSearch.toLowerCase()))
-      .filter((l) => !result || l.result === result)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      .filter((l) => (l.plateNumber || '').toLowerCase().includes(debouncedSearch.toLowerCase()))
+      .filter((l) => !result || l.result === result);
   }, [logs, debouncedSearch, result]);
 
   const columns = [
     { key: 'timestamp', header: 'Time', render: (row) => new Date(row.timestamp).toLocaleString(), sortable: true },
     { key: 'plateNumber', header: 'Plate', sortable: true },
-    // NEW: Campus Entry Status/Type
     { 
       key: 'entryType', 
       header: 'Entry Status', 
