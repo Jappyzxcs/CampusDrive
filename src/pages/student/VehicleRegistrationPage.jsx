@@ -164,12 +164,12 @@ function extractLicenseExpiry(text) {
   const labelBlock = text.match(/(?:Expiration|Expiry|Expires)[\s\S]{0,120}?(?:\d{4}[\s/.\-:|Il\\]+\d{1,2}[\s/.\-:|Il\\]+\d{1,2}|\d{8})/i);
   if (labelBlock) {
     const dates = extractAllDates(labelBlock[0]);
-    if (dates.length > 0) return dates[0].formatted;
+    if (dates.length > 0) return { value: dates[0].formatted, confident: true };
   }
   const allDates = extractAllDates(text);
   if (!allDates.length) return null;
   allDates.sort((a, b) => a.iso.localeCompare(b.iso));
-  return allDates[allDates.length - 1].formatted;
+  return { value: allDates[allDates.length - 1].formatted, confident: false };
 }
 
 function extractOrExpiry(text) {
@@ -177,18 +177,48 @@ function extractOrExpiry(text) {
   const rangeMatch = text.match(/(?:to|until)\s+([A-Z]{3,9}\s+\d{1,2}[,\s]+\d{4}|\d{1,2}[\s/.\-:|Il\\]+\d{1,2}[\s/.\-:|Il\\]+\d{4})/i);
   if (rangeMatch) {
     const dates = extractAllDates(rangeMatch[0]);
-    if (dates.length > 0) return dates[0].formatted;
+    if (dates.length > 0) return { value: dates[0].formatted, confident: true };
   }
   const m = text.match(/(?:valid\s*until|renewal\s*on|next\s*reg)[\s\S]{0,60}?([A-Z]{3,9}\s+\d{1,2}[,\s]+\d{4}|\d{1,2}[\s/.\-:|Il\\]+\d{1,2}[\s/.\-:|Il\\]+\d{4}|\d{4}[\s/.\-:|Il\\]+\d{1,2}[\s/.\-:|Il\\]+\d{1,2})/i);
   if (m) {
     const dates = extractAllDates(m[0]);
-    if (dates.length > 0) return dates[0].formatted;
+    if (dates.length > 0) return { value: dates[0].formatted, confident: true };
   }
   const dates = extractAllDates(text);
   if (dates.length > 0) {
     dates.sort((a, b) => a.iso.localeCompare(b.iso));
-    return dates[dates.length - 1].formatted;
+    return { value: dates[dates.length - 1].formatted, confident: false };
   }
+  return null;
+}
+
+/* =========================================================================
+   EXPIRY VALIDATION HELPERS
+   ========================================================================= */
+
+function parseDMY(str) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((str || '').trim());
+  if (!m) return null;
+  const d = new Date(+m[3], +m[2] - 1, +m[1]);
+  // reject impossible dates such as 31/02/2026
+  return d.getMonth() === +m[2] - 1 ? d : null;
+}
+
+// Returns 'valid' | 'expired' | 'unreadable'
+function getExpiryStatus(str) {
+  const d = parseDMY(str);
+  if (!d) return 'unreadable';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today ? 'expired' : 'valid';
+}
+
+function expiryMessage(status, isGuess) {
+  if (status === 'expired') {
+    return 'This date is in the past. If the scan misread it, correct it. Otherwise go back and upload a valid document.';
+  }
+  if (status === 'unreadable') return 'Enter the date as DD/MM/YYYY.';
+  if (isGuess) return 'Best guess from the scan. Please check it against the document.';
   return null;
 }
 
@@ -555,7 +585,8 @@ export default function VehicleRegistrationPage() {
   });
 
   const [extractedData, setExtractedData] = useState({
-    licenseName: '', crName: '', color: '', licenseExpiry: '', orExpiry: ''
+    licenseName: '', crName: '', color: '', licenseExpiry: '', orExpiry: '',
+    rawLicenseExpiry: '', rawOrExpiry: '', licenseExpiryGuess: false, orExpiryGuess: false
   });
   const [nameMatchResult, setNameMatchResult] = useState(true);
 
@@ -739,8 +770,10 @@ export default function VehicleRegistrationPage() {
       const rawCrName = extractCrName(crText) || '';
       const orName = extractOrName(orText) || '';
       const color = extractColor(orText) || '';
-      const licenseExpiry = extractLicenseExpiry(licenseText) || '';
-      const orExpiry = extractOrExpiry(orText) || '';
+      const licExp = extractLicenseExpiry(licenseText);
+      const orExp = extractOrExpiry(orText);
+      const licenseExpiry = licExp?.value || '';
+      const orExpiry = orExp?.value || '';
 
       const bestCrName = (orName.length > rawCrName.length) ? orName : rawCrName;
       const isMatch = namesMatch(licenseName, bestCrName);
@@ -750,7 +783,11 @@ export default function VehicleRegistrationPage() {
         crName: bestCrName,
         color,
         licenseExpiry,
-        orExpiry
+        orExpiry,
+        rawLicenseExpiry: licenseExpiry, // original OCR reading, never edited by the user
+        rawOrExpiry: orExpiry,
+        licenseExpiryGuess: !!licExp && !licExp.confident,
+        orExpiryGuess: !!orExp && !orExp.confident
       });
       setNameMatchResult(isMatch);
       
@@ -768,6 +805,19 @@ export default function VehicleRegistrationPage() {
 
   async function handleSubmitFinal(event) {
     event.preventDefault();
+
+    // Hard block: expired or unreadable OR / license expiry dates
+    for (const [label, value] of [['Official Receipt', extractedData.orExpiry], ["Driver's License", extractedData.licenseExpiry]]) {
+      const status = getExpiryStatus(value);
+      if (status === 'expired') {
+        showToast(`Your ${label} is expired. Registration cannot proceed.`, { type: 'danger' });
+        return;
+      }
+      if (status === 'unreadable') {
+        showToast(`Enter the ${label} expiry date as DD/MM/YYYY.`, { type: 'danger' });
+        return;
+      }
+    }
     
     const accountName = user?.fullName || user?.name || '';
     const matchesAccountName = namesMatch(accountName, extractedData.licenseName) || namesMatch(accountName, extractedData.crName);
@@ -832,6 +882,10 @@ export default function VehicleRegistrationPage() {
     2: 'Upload Documents',
     3: 'Verify & Finalize'
   };
+
+  const licenseExpiryStatus = getExpiryStatus(extractedData.licenseExpiry);
+  const orExpiryStatus = getExpiryStatus(extractedData.orExpiry);
+  const expiryProblem = licenseExpiryStatus !== 'valid' || orExpiryStatus !== 'valid';
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 pb-12">
@@ -985,8 +1039,14 @@ export default function VehicleRegistrationPage() {
                   <TextField id="color" label="Vehicle Color (from OR)" value={extractedData.color} onChange={(e) => updateExtracted('color', e.target.value)} />
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
-                  <TextField id="licenseExpiry" type="text" label="License Expiry Date" value={extractedData.licenseExpiry} onChange={(e) => updateExtracted('licenseExpiry', e.target.value)} />
-                  <TextField id="orExpiry" type="text" label="OR Expiry / Validity" value={extractedData.orExpiry} onChange={(e) => updateExtracted('orExpiry', e.target.value)} />
+                  <div className="flex flex-col gap-2">
+                    <TextField id="licenseExpiry" type="text" label="License Expiry Date (DD/MM/YYYY)" value={extractedData.licenseExpiry} error={expiryMessage(licenseExpiryStatus, extractedData.licenseExpiryGuess)} onChange={(e) => updateExtracted('licenseExpiry', e.target.value)} />
+                    <DocPreview file={docs.license} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <TextField id="orExpiry" type="text" label="OR Expiry / Validity (DD/MM/YYYY)" value={extractedData.orExpiry} error={expiryMessage(orExpiryStatus, extractedData.orExpiryGuess)} onChange={(e) => updateExtracted('orExpiry', e.target.value)} />
+                    <DocPreview file={docs.or} />
+                  </div>
                 </div>
               </div>
 
@@ -1014,7 +1074,7 @@ export default function VehicleRegistrationPage() {
                 <button type="button" className="btn-secondary" onClick={() => setCurrentStep(2)}>
                   Back
                 </button>
-                <button type="submit" className="btn-primary" disabled={isSubmitting}>
+                <button type="submit" className="btn-primary" disabled={isSubmitting || expiryProblem}>
                   {isSubmitting ? 'Submitting...' : 'Submit Registration'}
                 </button>
               </div>
@@ -1058,6 +1118,18 @@ function DocumentUploader({ label, id, required, file, error, onChange }) {
       {error && <p className="text-xs text-danger-600">{error}</p>}
     </div>
   );
+}
+
+function DocPreview({ file }) {
+  const [url, setUrl] = useState(null);
+  useEffect(() => {
+    if (!file || !file.type.startsWith('image/')) { setUrl(null); return; }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  if (!url) return null;
+  return <img src={url} alt="" className="max-h-40 w-full rounded border border-slate-200 bg-white object-contain" />;
 }
 
 const HANDLE_SIZE = 14;

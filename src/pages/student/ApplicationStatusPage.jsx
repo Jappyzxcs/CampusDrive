@@ -11,7 +11,7 @@ import { Timeline } from '../../components/common/Timeline';
 import { Modal } from '../../components/common/Modal';
 import { ROUTES } from '../../constants/routes';
 
-// THE FIX: Import real Firebase tools instead of mock data
+// Firebase imports
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -21,13 +21,50 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
+// THE FIX: Dynamically generate the timeline if it's missing from the database
+function generateTimeline(app) {
+  if (app.timeline && Array.isArray(app.timeline)) return app.timeline;
+  
+  const steps = [{ 
+    title: 'Application Submitted', 
+    label: 'Application Submitted', 
+    date: app.submittedDate || app.createdAt || new Date().toISOString().split('T')[0], 
+    status: 'completed' 
+  }];
+  
+  const status = (app.status || '').toLowerCase();
+
+  if (status === 'pending' || status === 'under_review') {
+     steps.push({ title: 'Under Review', label: 'Under Review', status: 'current' });
+     steps.push({ title: 'Approval', label: 'Approval', status: 'upcoming' });
+  } else if (status === 'approved' || status === 'for_payment') {
+     steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
+     steps.push({ title: 'Approved', label: 'Approved', date: app.reviewedDate || app.approvedDate, status: 'completed' });
+     steps.push({ title: 'Payment & Issuance', label: 'Payment & Issuance', status: 'current' });
+  } else if (status === 'completed' || status === 'paid' || status === 'active') {
+     steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
+     steps.push({ title: 'Approved', label: 'Approved', date: app.reviewedDate || app.approvedDate, status: 'completed' });
+     steps.push({ title: 'Sticker Issued', label: 'Sticker Issued', date: app.dateIssued || new Date().toISOString().split('T')[0], status: 'completed' });
+  } else if (status === 'rejected' || status === 'revoked') {
+     steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
+     steps.push({ 
+       title: status === 'revoked' ? 'Revoked' : 'Rejected', 
+       label: status === 'revoked' ? 'Revoked' : 'Rejected',
+       date: app.revokedDate || app.reviewedDate || new Date().toISOString().split('T')[0], 
+       status: 'error', 
+       description: app.revokeReason || app.rejectReason 
+     });
+  }
+  
+  return steps;
+}
+
 export default function ApplicationStatusPage() {
   const { user } = useAuth();
   
-  // THE FIX: Query real applications assigned to this specific user's ID
   const { data: applications, isLoading } = useAsyncData(async () => {
     if (!user) return [];
-    const userId = user.id || user.uid; // Handle both ID property names
+    const userId = user.id || user.uid; 
     const q = query(collection(db, 'applications'), where('userId', '==', userId));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -41,25 +78,41 @@ export default function ApplicationStatusPage() {
   const filtered = useMemo(() => {
     if (!applications) return [];
     return applications.filter((app) => {
-      const matchesSearch = app.type.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const typeStr = app.type || 'New Registration';
+      const matchesSearch = typeStr.toLowerCase().includes(debouncedSearch.toLowerCase());
       const matchesStatus = !status || app.status === status;
       return matchesSearch && matchesStatus;
     });
   }, [applications, debouncedSearch, status]);
 
   const columns = [
-    { key: 'type', header: 'Application', sortable: true },
-    { key: 'submittedDate', header: 'Submitted', sortable: true },
+    { key: 'type', header: 'Application', render: (row) => row.type || 'New Registration', sortable: true },
+    { key: 'submittedDate', header: 'Submitted', render: (row) => row.submittedDate || row.createdAt || '—', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
-    { key: 'reviewedBy', header: 'Reviewed By', render: (row) => row.reviewedBy || '—' },
+    { 
+      key: 'reviewedBy', 
+      header: 'Reviewed By', 
+      render: (row) => {
+        if (row.reviewedBy) return <span className="font-medium text-slate-800">{row.reviewedBy}</span>;
+        
+        const status = (row.status || '').toLowerCase();
+        if (status === 'pending' || status === 'under_review') {
+          return <span className="text-slate-400 italic text-xs">Pending Review...</span>;
+        }
+        
+        // Fallback if the application was processed but no specific admin name was saved
+        return <span className="font-medium text-slate-700">GSU Admin</span>; 
+      } 
+    },
   ];
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-primary-900">Application Status</h2>
-          <p className="text-sm text-slate-500">Track your registration and renewal applications.</p>
+          {/* THE FIX: Modernized Typography to match Sidebar updates */}
+          <h2 className="text-2xl font-bold font-sans text-slate-800 tracking-tight">Application Status</h2>
+          <p className="text-sm font-medium text-slate-500 mt-1">Track your registration and renewal applications.</p>
         </div>
         <Link to={ROUTES.STUDENT_VEHICLE_REGISTRATION} className="btn-primary">
           New Application
@@ -85,17 +138,24 @@ export default function ApplicationStatusPage() {
         />
       </DashboardCard>
 
-      <Modal isOpen={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.type} size="lg">
+      <Modal isOpen={Boolean(selected)} onClose={() => setSelected(null)} title={selected?.type || 'Application Details'} size="lg">
         {selected && (
           <div className="flex flex-col gap-5">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <StatusBadge status={selected.status} />
-              <span className="text-xs text-slate-400">Submitted {selected.submittedDate}</span>
+              <span className="text-xs font-semibold text-slate-400">
+                Submitted {selected.submittedDate || selected.createdAt}
+              </span>
             </div>
             {selected.reviewNotes && (
-              <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">{selected.reviewNotes}</p>
+              <p className="rounded-md bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-800">
+                <span className="font-bold block mb-1">Review Notes:</span>
+                {selected.reviewNotes}
+              </p>
             )}
-            <Timeline steps={selected.timeline} />
+            
+            {/* THE FIX: Passing dynamically generated steps */}
+            <Timeline steps={generateTimeline(selected)} />
           </div>
         )}
       </Modal>
