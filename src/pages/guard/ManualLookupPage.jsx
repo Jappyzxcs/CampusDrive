@@ -115,7 +115,7 @@ export default function ManualLookupPage() {
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold text-primary-900">Manual Sticker Lookup</h2>
+        <h2 className="text-xl font-semibold text-primary-900">Manual Plate Number Lookup</h2>
         <p className="text-sm text-slate-500">Use this when the sticker is too damaged to be scanned.</p>
       </div>
 

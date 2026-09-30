@@ -18,9 +18,24 @@ export default function StickerManagementPage() {
 
   const awaitingPayment = useMemo(() => {
     if (!vehicleData) return [];
-    return vehicleData.filter((v) => 
+    
+    // 1. Filter for vehicles needing payment
+    const filtered = vehicleData.filter((v) => 
       v.status === 'for_payment' || v.status === 'approved' || v.status === 'paid'
     );
+
+    // 2. THE FIX: Deduplicate by Plate Number
+    const uniqueVehicles = new Map();
+    filtered.forEach((vehicle) => {
+      const plate = (vehicle.plateNumber || '').toUpperCase().trim();
+      // If we haven't seen this plate yet, add it to the map
+      if (!uniqueVehicles.has(plate)) {
+        uniqueVehicles.set(plate, vehicle);
+      }
+    });
+
+    // Return only the unique list
+    return Array.from(uniqueVehicles.values());
   }, [vehicleData]);
 
   const getDefaultAmount = (vehicle) => {

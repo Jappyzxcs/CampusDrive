@@ -6,9 +6,9 @@ import { SelectField } from '../../components/forms/SelectField';
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
-import { applicationService, compressImageToBase64 } from '../../services/applicationService';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'; // NEW IMPORTS
-import { db } from '../../config/firebase'; // NEW IMPORT
+import { applicationService } from '../../services/applicationService';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'; 
+import { db } from '../../config/firebase'; 
 import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'; 
@@ -131,11 +131,16 @@ function cleanExtractedName(rawName) {
 }
 
 function extractLicenseName(text) {
-  const label = text.match(/Last\s*Name[,.]?\s*First\s*Name[,.]?\s*Middle\s*Name/i);
-  if (!label) return null;
-  const windowText = text.slice(label.index + label[0].length, label.index + label[0].length + 150);
-  const m = windowText.match(/([A-Z][A-Z\-. ]+,\s*[A-Z][A-Z\-. ]+)/);
-  return m ? cleanExtractedName(m[1]) : null;
+  const label = text.match(/(?:Last\s*Name|Name)[\s\S]{0,40}?(?:First\s*Name)?/i);
+  
+  if (label) {
+    const windowText = text.slice(label.index + label[0].length, label.index + label[0].length + 150);
+    const m = windowText.match(/([A-Z][A-Z\-. ]+,\s*[A-Z][A-Z\-. ]+)/);
+    if (m) return cleanExtractedName(m[1]);
+  }
+  
+  const fallbackMatch = text.match(/([A-Z][A-Z\-.]{1,20},\s*[A-Z][A-Z\-. ]{2,30})/);
+  return fallbackMatch ? cleanExtractedName(fallbackMatch[1]) : null;
 }
 
 function extractCrName(text) {
@@ -200,11 +205,9 @@ function parseDMY(str) {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((str || '').trim());
   if (!m) return null;
   const d = new Date(+m[3], +m[2] - 1, +m[1]);
-  // reject impossible dates such as 31/02/2026
   return d.getMonth() === +m[2] - 1 ? d : null;
 }
 
-// Returns 'valid' | 'expired' | 'unreadable'
 function getExpiryStatus(str) {
   const d = parseDMY(str);
   if (!d) return 'unreadable';
@@ -552,6 +555,46 @@ const processFile = async (file) => {
 };
 
 /* =========================================================================
+   ULTRA COMPRESSION FOR FIREBASE PAYLOAD (1MB LIMIT FIX)
+   ========================================================================= */
+const ultraCompressFile = async (file) => {
+  if (!file) return null;
+  try {
+    // Uses your existing secure render function for BOTH images and PDFs
+    const canvas = await renderFileToCanvas(file);
+    
+    // Hard constraint: Maximum 800px on the longest side to kill file size
+    const MAX_DIM = 800; 
+    let { width, height } = canvas;
+    
+    if (width > height && width > MAX_DIM) {
+      height = Math.round(height * (MAX_DIM / width));
+      width = MAX_DIM;
+    } else if (height > MAX_DIM) {
+      width = Math.round(width * (MAX_DIM / height));
+      height = MAX_DIM;
+    }
+
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = width;
+    smallCanvas.height = height;
+    const ctx = smallCanvas.getContext('2d');
+    
+    // Paint a solid white background in case of transparent PNGs
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(canvas, 0, 0, width, height);
+
+    // Compress aggressively into a JPEG at 50% quality
+    return smallCanvas.toDataURL('image/jpeg', 0.5); 
+  } catch (err) {
+    console.error("Ultra-compression failed:", err);
+    return null;
+  }
+};
+
+
+/* =========================================================================
    COMPONENT
    ========================================================================= */
 
@@ -572,7 +615,7 @@ export default function VehicleRegistrationPage() {
   const { user } = useAuth(); 
   
   const [currentStep, setCurrentStep] = useState(1);
-  const [isCheckingPlate, setIsCheckingPlate] = useState(false); // NEW LOADER
+  const [isCheckingPlate, setIsCheckingPlate] = useState(false); 
   const defaultRegistrantType = user?.role === 'faculty' ? 'Faculty' : 'Student';
   
   const [form, setForm] = useState({
@@ -620,8 +663,12 @@ export default function VehicleRegistrationPage() {
   const OCR_DOC_KEYS = ['license', 'or', 'cr'];
 
   async function handleDocSelect(key, file) {
-    if (!file) return;
     if (errors[key]) setErrors((err) => ({ ...err, [key]: null }));
+
+    if (!file) {
+      setDocs((prev) => ({ ...prev, [key]: null }));
+      return;
+    }
 
     if (OCR_DOC_KEYS.includes(key)) {
       try {
@@ -693,7 +740,6 @@ export default function VehicleRegistrationPage() {
     return Object.keys(next).length === 0;
   }
 
-  // THE FIX: Intercept step 1 to enforce the Blacklist & Account restriction 
   async function handleNextStep1(event) {
     event.preventDefault();
     if (!validateStep1()) return;
@@ -704,7 +750,6 @@ export default function VehicleRegistrationPage() {
       const cleanPlate = form.plateNumber.replace(/\s+/g, '').toUpperCase();
       const currentUserId = user?.uid || user?.id;
 
-      // Check if the Plate Number is Blacklisted (Blocks account hoppers)
       const blacklistRef = doc(db, 'revoked_vehicles', cleanPlate);
       const blacklistSnap = await getDoc(blacklistRef);
 
@@ -715,11 +760,10 @@ export default function VehicleRegistrationPage() {
         if (new Date() < lockoutDate) {
           showToast(`Registration blocked. Plate ${cleanPlate} is revoked until ${lockoutDate.toLocaleDateString()}.`, { type: 'danger' });
           setIsCheckingPlate(false);
-          return; // Hard stop
+          return; 
         }
       }
 
-      // Check if the User Account has a revoked vehicle history
       if (currentUserId) {
         const userRevokedQ = query(collection(db, 'revoked_vehicles'), where('ownerId', '==', currentUserId));
         const userRevokedSnap = await getDocs(userRevokedQ);
@@ -735,7 +779,7 @@ export default function VehicleRegistrationPage() {
         if (activeLockout) {
           showToast(`Your account is restricted from registering vehicles until ${activeLockout.toLocaleDateString()} due to a prior revocation.`, { type: 'danger' });
           setIsCheckingPlate(false);
-          return; // Hard stop
+          return; 
         }
       }
 
@@ -786,7 +830,7 @@ export default function VehicleRegistrationPage() {
         color,
         licenseExpiry,
         orExpiry,
-        rawLicenseExpiry: licenseExpiry, // original OCR reading, never edited by the user
+        rawLicenseExpiry: licenseExpiry, 
         rawOrExpiry: orExpiry,
         licenseExpiryGuess: !!licExp && !licExp.confident,
         orExpiryGuess: !!orExp && !orExp.confident
@@ -808,7 +852,6 @@ export default function VehicleRegistrationPage() {
   async function handleSubmitFinal(event) {
     event.preventDefault();
 
-    // Hard block: expired or unreadable OR / license expiry dates
     for (const [label, value] of [['Official Receipt', extractedData.orExpiry], ["Driver's License", extractedData.licenseExpiry]]) {
       const status = getExpiryStatus(value);
       if (status === 'expired') {
@@ -830,27 +873,30 @@ export default function VehicleRegistrationPage() {
     }
 
     setIsSubmitting(true);
-    showToast('Processing documents... Please wait.', { type: 'info' });
+    showToast('Compressing and saving documents... Please wait.', { type: 'info' });
     
     try {
+      // THE FIX: Use ultraCompressFile instead of compressImageToBase64
       const [vehiclePhotoUrl, licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
-        compressImageToBase64(vehiclePhotos[0] || null), 
-        compressImageToBase64(docs.license),
-        compressImageToBase64(docs.or),
-        compressImageToBase64(docs.cr),
-        compressImageToBase64(docs.authLetter),
-        compressImageToBase64(docs.deedOfSale),
-        compressImageToBase64(docs.companyCert),
+        ultraCompressFile(vehiclePhotos[0] || null), 
+        ultraCompressFile(docs.license || null),
+        ultraCompressFile(docs.or || null),
+        ultraCompressFile(docs.cr || null),
+        ultraCompressFile(docs.authLetter || null),
+        ultraCompressFile(docs.deedOfSale || null),
+        ultraCompressFile(docs.companyCert || null),
       ]);
 
+      const safeData = (val) => (typeof val === 'string' ? val : null);
+
       const documentUrls = {
-        vehiclePhoto: vehiclePhotoUrl,
-        license: licenseUrl,
-        or: orUrl,
-        cr: crUrl,
-        authLetter: authLetterUrl,
-        deedOfSale: deedOfSaleUrl,
-        companyCert: companyCertUrl,
+        vehiclePhoto: safeData(vehiclePhotoUrl),
+        license: safeData(licenseUrl),
+        or: safeData(orUrl),
+        cr: safeData(crUrl),
+        authLetter: safeData(authLetterUrl),
+        deedOfSale: safeData(deedOfSaleUrl),
+        companyCert: safeData(companyCertUrl),
       };
 
       const applicationData = {
@@ -858,22 +904,33 @@ export default function VehicleRegistrationPage() {
         type: form.registrantType === 'Student' ? 'New Registration - Student' : 'New Registration - Faculty',
         submittedDate: new Date().toISOString().split('T')[0], 
         status: 'pending',
-        vehicleDetails: form,
-        nlpExtractedData: extractedData,
+        vehicleDetails: { ...form },
+        nlpExtractedData: { ...extractedData },
         nlpNamesMatched: nameMatchResult,
         userId: user?.uid || user?.id || 'anonymous',
         documentUrls: documentUrls,
-        vehicleImageUrl: vehiclePhotoUrl
+        vehicleImageUrl: safeData(vehiclePhotoUrl)
       };
 
-      await applicationService.createApplication(applicationData);
+      const cleanApplicationData = JSON.parse(JSON.stringify(applicationData));
+
+      await applicationService.createApplication(cleanApplicationData);
 
       showToast('Registration submitted for admin review.', { type: 'success' });
       navigate(ROUTES.STUDENT_APPLICATION_STATUS);
       
     } catch (error) {
       console.error("Submission failed:", error);
-      showToast('Failed to submit application to the database.', { type: 'danger' });
+      
+      let exactError = error.message || "Unknown error";
+      
+      if (exactError.toLowerCase().includes("permission") || exactError.toLowerCase().includes("missing")) {
+        exactError = "FIREBASE RULES: You need to allow 'write' access in your Firestore Rules.";
+      } else if (exactError.toLowerCase().includes("exhausted") || exactError.toLowerCase().includes("exceeds") || exactError.toLowerCase().includes("payload")) {
+        exactError = "1MB LIMIT EXCEEDED: The images are too large for Firestore. We need to use Firebase Storage.";
+      }
+      
+      showToast(`Failed: ${exactError}`, { type: 'danger' });
     } finally {
       setIsSubmitting(false);
     }
@@ -1006,9 +1063,9 @@ export default function VehicleRegistrationPage() {
               </div>
 
               <div className="flex flex-col gap-5">
-                <DocumentUploader label="Driver's License ID" id="license" required file={docs.license} error={errors.license} onChange={(e) => handleDocSelect('license', e.target.files[0])} />
-                <DocumentUploader label="Official Receipt (OR)" id="or" required file={docs.or} error={errors.or} onChange={(e) => handleDocSelect('or', e.target.files[0])} />
-                <DocumentUploader label="Certificate of Registration (CR)" id="cr" required file={docs.cr} error={errors.cr} onChange={(e) => handleDocSelect('cr', e.target.files[0])} />
+                <DocumentUploader label="Driver's License ID" id="license" required file={docs.license} error={errors.license} onChange={(e) => handleDocSelect('license', e.target.files[0])} onRemove={() => handleDocSelect('license', null)} />
+                <DocumentUploader label="Official Receipt (OR)" id="or" required file={docs.or} error={errors.or} onChange={(e) => handleDocSelect('or', e.target.files[0])} onRemove={() => handleDocSelect('or', null)} />
+                <DocumentUploader label="Certificate of Registration (CR)" id="cr" required file={docs.cr} error={errors.cr} onChange={(e) => handleDocSelect('cr', e.target.files[0])} onRemove={() => handleDocSelect('cr', null)} />
               </div>
 
               <div className="flex justify-between border-t border-slate-100 pt-5 mt-4">
@@ -1081,9 +1138,9 @@ export default function VehicleRegistrationPage() {
                   </div>
 
                   <div className="flex flex-col gap-4">
-                    <DocumentUploader label="Authorization Letter (Optional)" id="authLetter" file={docs.authLetter} onChange={(e) => handleDocSelect('authLetter', e.target.files[0])} />
-                    <DocumentUploader label="Notarized Deed of Sale (Optional)" id="deedOfSale" file={docs.deedOfSale} onChange={(e) => handleDocSelect('deedOfSale', e.target.files[0])} />
-                    <DocumentUploader label="Company Certification (Optional)" id="companyCert" file={docs.companyCert} onChange={(e) => handleDocSelect('companyCert', e.target.files[0])} />
+                    <DocumentUploader label="Authorization Letter (Optional)" id="authLetter" file={docs.authLetter} onChange={(e) => handleDocSelect('authLetter', e.target.files[0])} onRemove={() => handleDocSelect('authLetter', null)} />
+                    <DocumentUploader label="Notarized Deed of Sale (Optional)" id="deedOfSale" file={docs.deedOfSale} onChange={(e) => handleDocSelect('deedOfSale', e.target.files[0])} onRemove={() => handleDocSelect('deedOfSale', null)} />
+                    <DocumentUploader label="Company Certification (Optional)" id="companyCert" file={docs.companyCert} onChange={(e) => handleDocSelect('companyCert', e.target.files[0])} onRemove={() => handleDocSelect('companyCert', null)} />
                   </div>
                 </div>
               )}
@@ -1118,16 +1175,33 @@ export default function VehicleRegistrationPage() {
   );
 }
 
-function DocumentUploader({ label, id, required, file, error, onChange }) {
+function DocumentUploader({ label, id, required, file, error, onChange, onRemove }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-sm font-medium text-slate-700">
         {label} {required && <span className="text-danger-500">*</span>}
       </label>
       <div className={`relative flex items-center justify-between rounded-lg border px-4 py-3 bg-white ${error ? 'border-danger-300' : 'border-slate-300'}`}>
-        <span className={`text-sm truncate mr-4 ${file ? 'text-slate-900 font-medium' : 'text-slate-400'}`}>
-          {file ? file.name : 'No file selected'}
-        </span>
+        
+        <div className="flex items-center gap-2 overflow-hidden mr-4">
+          <span className={`text-sm truncate ${file ? 'text-slate-900 font-medium' : 'text-slate-400'}`}>
+            {file ? file.name : 'No file selected'}
+          </span>
+          
+          {file && onRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="flex-shrink-0 text-slate-400 hover:text-danger-500 transition-colors"
+              title="Remove file"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
+
         <label htmlFor={id} className="cursor-pointer rounded-md bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-200">
           Browse
           <input id={id} name={id} type="file" accept="image/*,.pdf" className="sr-only" onChange={onChange} />
