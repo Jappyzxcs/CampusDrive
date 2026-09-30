@@ -215,10 +215,12 @@ function getExpiryStatus(str) {
 
 function expiryMessage(status, isGuess) {
   if (status === 'expired') {
-    return 'This date is in the past. If the scan misread it, correct it. Otherwise go back and upload a valid document.';
+    return 'This date is in the past. If the scan misread it, please go back to Step 2 and upload a clearer image.';
   }
-  if (status === 'unreadable') return 'Enter the date as DD/MM/YYYY.';
-  if (isGuess) return 'Best guess from the scan. Please check it against the document.';
+  if (status === 'unreadable') {
+    return 'Date could not be read. Please go back to Step 2 and upload a clearer image.';
+  }
+  if (isGuess) return 'Best guess from the scan. If incorrect, please re-upload a clearer image.';
   return null;
 }
 
@@ -1040,11 +1042,27 @@ export default function VehicleRegistrationPage() {
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mt-4">
                   <div className="flex flex-col gap-2">
-                    <TextField id="licenseExpiry" type="text" label="License Expiry Date (DD/MM/YYYY)" value={extractedData.licenseExpiry} error={expiryMessage(licenseExpiryStatus, extractedData.licenseExpiryGuess)} onChange={(e) => updateExtracted('licenseExpiry', e.target.value)} />
+                    <TextField 
+                      id="licenseExpiry" 
+                      type="text" 
+                      label="License Expiry Date (Locked)" 
+                      value={extractedData.licenseExpiry} 
+                      error={expiryMessage(licenseExpiryStatus, extractedData.licenseExpiryGuess)} 
+                      onChange={(e) => updateExtracted('licenseExpiry', e.target.value)}
+                      disabled={true} 
+                    />
                     <DocPreview file={docs.license} />
                   </div>
                   <div className="flex flex-col gap-2">
-                    <TextField id="orExpiry" type="text" label="OR Expiry / Validity (DD/MM/YYYY)" value={extractedData.orExpiry} error={expiryMessage(orExpiryStatus, extractedData.orExpiryGuess)} onChange={(e) => updateExtracted('orExpiry', e.target.value)} />
+                    <TextField 
+                      id="orExpiry" 
+                      type="text" 
+                      label="OR Expiry / Validity (Locked)" 
+                      value={extractedData.orExpiry} 
+                      error={expiryMessage(orExpiryStatus, extractedData.orExpiryGuess)} 
+                      onChange={(e) => updateExtracted('orExpiry', e.target.value)}
+                      disabled={true} 
+                    />
                     <DocPreview file={docs.or} />
                   </div>
                 </div>

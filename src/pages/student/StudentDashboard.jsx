@@ -162,7 +162,7 @@ export default function StudentDashboard() {
           </>
         ) : (
           <>
-            <StatCard
+           <StatCard
               label="Vehicle Status"
               value={
                 approvedVehicle ? (
@@ -172,7 +172,16 @@ export default function StudentDashboard() {
                     </span>
                   ) : (
                     <div className="flex items-center gap-2">
-                      <StatusBadge status={approvedVehicle.status} />
+                      
+                      {/* THE FIX: Override 'completed' so it doesn't say "Visit Completed" */}
+                      {approvedVehicle.status === 'completed' ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800">
+                          Active
+                        </span>
+                      ) : (
+                        <StatusBadge status={approvedVehicle.status} />
+                      )}
+                      
                       <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md uppercase tracking-wider">
                         {approvedVehicle.plateNumber}
                       </span>

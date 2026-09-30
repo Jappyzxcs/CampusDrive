@@ -148,11 +148,10 @@ export default function VisitorVerificationPage() {
               <Row label="Plate Number" value={visit.plateNumber} highlight />
               <Row label="Purpose" value={visit.purpose} />
               <Row label="Host/Destination" value={visit.hostName} />
-              <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Status</span>
-                <StatusBadge status={visit.status} />
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800">
+                  {visit.status === 'inside_campus' ? 'On Campus' : visit.status}
+                </span>
               </div>
-            </div>
           )}
 
           {visit?.status === 'approved' && (
