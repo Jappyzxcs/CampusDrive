@@ -560,10 +560,7 @@ const processFile = async (file) => {
 const ultraCompressFile = async (file) => {
   if (!file) return null;
   try {
-    // Uses your existing secure render function for BOTH images and PDFs
     const canvas = await renderFileToCanvas(file);
-    
-    // Hard constraint: Maximum 800px on the longest side to kill file size
     const MAX_DIM = 800; 
     let { width, height } = canvas;
     
@@ -580,12 +577,10 @@ const ultraCompressFile = async (file) => {
     smallCanvas.height = height;
     const ctx = smallCanvas.getContext('2d');
     
-    // Paint a solid white background in case of transparent PNGs
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(canvas, 0, 0, width, height);
 
-    // Compress aggressively into a JPEG at 50% quality
     return smallCanvas.toDataURL('image/jpeg', 0.5); 
   } catch (err) {
     console.error("Ultra-compression failed:", err);
@@ -616,7 +611,9 @@ export default function VehicleRegistrationPage() {
   
   const [currentStep, setCurrentStep] = useState(1);
   const [isCheckingPlate, setIsCheckingPlate] = useState(false); 
-  const defaultRegistrantType = user?.role === 'faculty' ? 'Faculty' : 'Student';
+  
+  // THE FIX: Case-insensitive role check
+  const defaultRegistrantType = user?.role?.toLowerCase() === 'faculty' ? 'Faculty' : 'Student';
   
   const [form, setForm] = useState({
     lastName: '', firstName: '', middleName: '', contactNo: '', address: '', municipality: '',
@@ -876,7 +873,6 @@ export default function VehicleRegistrationPage() {
     showToast('Compressing and saving documents... Please wait.', { type: 'info' });
     
     try {
-      // THE FIX: Use ultraCompressFile instead of compressImageToBase64
       const [vehiclePhotoUrl, licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
         ultraCompressFile(vehiclePhotos[0] || null), 
         ultraCompressFile(docs.license || null),
@@ -902,6 +898,8 @@ export default function VehicleRegistrationPage() {
       const applicationData = {
         applicantName: `${form.firstName} ${form.lastName}`.trim(),
         type: form.registrantType === 'Student' ? 'New Registration - Student' : 'New Registration - Faculty',
+        // THE FIX: Explicitly save registrantType directly on the root of the document
+        registrantType: form.registrantType,
         submittedDate: new Date().toISOString().split('T')[0], 
         status: 'pending',
         vehicleDetails: { ...form },
@@ -975,7 +973,8 @@ export default function VehicleRegistrationPage() {
               <TextField id="address" label="Full Address" required value={form.address} error={errors.address} onChange={(e) => update('address', e.target.value)} />
 
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <SelectField id="registrantType" label="Registrant Type" required options={REGISTRANT_TYPES} value={form.registrantType} disabled={true} error={errors.registrantType} onChange={(e) => update('registrantType', e.target.value)} />
+                {/* THE FIX: Removed disabled={true} to allow the user to select Student/Faculty manually */}
+                <SelectField id="registrantType" label="Registrant Type" required options={REGISTRANT_TYPES} value={form.registrantType} error={errors.registrantType} onChange={(e) => update('registrantType', e.target.value)} />
                 <SelectField id="vehicleType" label="Vehicle Type" required options={VEHICLE_TYPES} value={form.vehicleType} error={errors.vehicleType} onChange={(e) => update('vehicleType', e.target.value)} />
               </div>
 

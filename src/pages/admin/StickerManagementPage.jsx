@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { applicationService } from '../../services/applicationService'; 
-import { notificationService } from '../../services/notificationService'; // NEW: Import Notifications
+import { notificationService } from '../../services/notificationService'; 
 import { DashboardCard } from '../../components/cards/DashboardCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { useToast } from '../../context/ToastContext';
@@ -24,17 +24,15 @@ export default function StickerManagementPage() {
       v.status === 'for_payment' || v.status === 'approved' || v.status === 'paid'
     );
 
-    // 2. THE FIX: Deduplicate by Plate Number
+    // 2. Deduplicate by Plate Number
     const uniqueVehicles = new Map();
     filtered.forEach((vehicle) => {
       const plate = (vehicle.plateNumber || '').toUpperCase().trim();
-      // If we haven't seen this plate yet, add it to the map
       if (!uniqueVehicles.has(plate)) {
         uniqueVehicles.set(plate, vehicle);
       }
     });
 
-    // Return only the unique list
     return Array.from(uniqueVehicles.values());
   }, [vehicleData]);
 
@@ -56,7 +54,7 @@ export default function StickerManagementPage() {
     }));
   };
 
-  async function handleProcessPayment(vehicle) {
+ async function handleProcessPayment(vehicle) {
     if (!inStock) {
       showToast('Cannot process payment. You are out of physical stickers!', { type: 'danger' });
       return;
@@ -83,6 +81,16 @@ export default function StickerManagementPage() {
       });
 
       const approvedRef = doc(db, 'approved_vehicles', vehicle.id);
+      
+      // THE ULTIMATE FIX: If the Admin page stripped the role, extract it directly from the Application Type string!
+      const appType = (vehicle.type || '').toLowerCase();
+      const backupRole = appType.includes('faculty') ? 'Faculty' : appType.includes('student') ? 'Student' : null;
+
+      const userRole = vehicle.registrantType || 
+                       (vehicle.vehicleDetails && vehicle.vehicleDetails.registrantType) || 
+                       backupRole ||
+                       'Student';
+
       await setDoc(approvedRef, {
         plateNumber: vehicle.plateNumber,
         ownerName: vehicle.ownerName || 'Unknown Owner',
@@ -90,10 +98,12 @@ export default function StickerManagementPage() {
         stickerSerial: serialNumber,
         vehicleImageUrl: vehicle.vehicleImageUrl || vehicle.imageUrl || vehicle.photoUrl || '', 
         accreditationStatus: 'Active',
-        dateIssued: new Date().toISOString()
+        dateIssued: new Date().toISOString(),
+        // Save the foolproof role into the approved database so the guard scanner can read it
+        registrantType: userRole
       }, { merge: true });
       
-      // 🟢 SEND STICKER ISSUED NOTIFICATION
+      // SEND STICKER ISSUED NOTIFICATION
       const ownerId = vehicle.ownerId || vehicle.userId;
       if (ownerId) {
         await notificationService.createNotification({

@@ -11,7 +11,7 @@ import { Icon } from '../../components/common/Icon';
 import { Skeleton } from '../../components/common/LoadingSkeleton';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
-import { Modal } from '../../components/common/Modal'; // THE FIX: Imported Modal
+import { Modal } from '../../components/common/Modal';
 
 export default function ApplicationReviewPage() {
   const { applicationId } = useParams();
@@ -28,11 +28,9 @@ export default function ApplicationReviewPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [decision, setDecision] = useState(null);
 
-  // THE FIX: State to handle the Image Viewer popup
   const [viewingImage, setViewingImage] = useState(null);
   const [viewingTitle, setViewingTitle] = useState('');
 
-  // THE FIX: Function to open the image modal
   const openDoc = (title, url) => {
     if (!url) {
       showToast(`No ${title} was found for this application.`, { type: 'warning' });
@@ -43,22 +41,49 @@ export default function ApplicationReviewPage() {
   };
 
   async function handleDecision(nextDecision) {
-    if (nextDecision === 'approved') {
+    setDecision(nextDecision);
+    setIsSubmitting(true);
+
+    try {
+      const reviewerName = user?.fullName || user?.name || 'GSU Admin';
+
+      // 1. Update the application status
+      await applicationService.updateApplicationStatus(
+        applicationId,
+        nextDecision,
+        notes,
+        reviewerName 
+      );
+
+      // 2. Process the approval or rejection
+      if (nextDecision === 'approved') {
+        
+        // THE FIX: Explicitly extract the role so it doesn't get lost
+        const safeRole = application.registrantType || 
+                         (application.vehicleDetails && application.vehicleDetails.registrantType) || 
+                         (application.type && application.type.includes('Faculty') ? 'Faculty' : 'Student');
+
         const vehicleData = {
           ownerName: application.applicantName,
           ownerId: application.userId || 'anonymous',
           plateNumber: application.vehicleDetails?.plateNumber || 'N/A',
           make: application.vehicleDetails?.vehicleType || 'N/A',
           model: '', 
-          type: application.vehicleDetails?.vehicleType || 'Other',
+          // THE FIX: Pass both the original application type AND the vehicle type safely
+          type: application.type || 'New Registration',
+          vehicleType: application.vehicleDetails?.vehicleType || 'Other',
+          // THE FIX: Save the role!
+          registrantType: safeRole,
           status: 'for_payment', 
           applicationId: applicationId,
           registrationDate: new Date().toISOString(),
           vehicleImageUrl: application.vehicleImageUrl || application.documentUrls?.vehiclePhoto || ""
         };
+        
+        // Save to vehicles collection exactly once
         await applicationService.createVehicle(vehicleData);
 
-        // 🟢 SEND APPROVAL NOTIFICATION
+        // Send Approval Notification
         if (application.userId) {
           await notificationService.createNotification({
             userId: application.userId,
@@ -69,7 +94,7 @@ export default function ApplicationReviewPage() {
         }
 
       } else if (nextDecision === 'rejected') {
-        // 🔴 SEND REJECTION NOTIFICATION
+        // Send Rejection Notification
         if (application.userId) {
           await notificationService.createNotification({
             userId: application.userId,
@@ -80,37 +105,6 @@ export default function ApplicationReviewPage() {
         }
       }
 
-    setDecision(nextDecision);
-    setIsSubmitting(true);
-
-    try {
-      const reviewerName = user?.fullName || user?.name || 'GSU Admin';
-
-      await applicationService.updateApplicationStatus(
-        applicationId,
-        nextDecision,
-        notes,
-        reviewerName 
-      );
-
-      if (nextDecision === 'approved') {
-        const vehicleData = {
-          ownerName: application.applicantName,
-          ownerId: application.userId || 'anonymous',
-          plateNumber: application.vehicleDetails?.plateNumber || 'N/A',
-          make: application.vehicleDetails?.vehicleType || 'N/A',
-          model: '', 
-          type: application.vehicleDetails?.vehicleType || 'Other',
-          status: 'for_payment', 
-          applicationId: applicationId,
-          registrationDate: new Date().toISOString(),
-          
-          // THE FIX: Explicitly hand the image URL over to the vehicles database!
-          vehicleImageUrl: application.vehicleImageUrl || application.documentUrls?.vehiclePhoto || ""
-        };
-        await applicationService.createVehicle(vehicleData);
-      }
-
       showToast(
         nextDecision === 'approved'
           ? 'Application approved. Forwarded to BAO for payment and sticker release.'
@@ -118,6 +112,7 @@ export default function ApplicationReviewPage() {
         { type: nextDecision === 'approved' ? 'success' : 'danger' },
       );
       navigate(ROUTES.ADMIN_PENDING_APPLICATIONS);
+      
     } catch (error) {
       console.error("Decision update failed:", error);
       showToast('Failed to process decision. Please try again.', { type: 'danger' });
@@ -152,7 +147,7 @@ export default function ApplicationReviewPage() {
   const vDetails = application.vehicleDetails || {};
   const nlpData = application.nlpExtractedData || {};
   const namesMatched = application.nlpNamesMatched ?? false;
-  const docs = application.documentUrls || {}; // THE FIX: Safely grab the Base64 URLs
+  const docs = application.documentUrls || {}; 
 
   const timelineEvents = application.timeline || [
     { 
@@ -239,7 +234,6 @@ export default function ApplicationReviewPage() {
         </DashboardCard>
       </div>
 
-      {/* THE FIX: Replaced Dummy Toast buttons with real openDoc functions */}
       <DashboardCard title="Attached Documents">
         <p className="text-sm text-slate-500 mb-4">
           Review the physical copies submitted by the applicant.
@@ -255,7 +249,6 @@ export default function ApplicationReviewPage() {
              Cert. of Registration (CR)
           </button>
           
-          {/* THESE ONLY SHOW UP IF THEY WERE ACTUALLY UPLOADED */}
           {docs.authLetter && (
              <button type="button" onClick={() => openDoc("Authorization Letter", docs.authLetter)} className="btn-secondary text-sm border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100">
                Authorization Letter
@@ -308,7 +301,6 @@ export default function ApplicationReviewPage() {
         </DashboardCard>
       )}
 
-      {/* THE FIX: Smart Popup Modal that displays either an image or a PDF viewer */}
       <Modal isOpen={!!viewingImage} onClose={() => setViewingImage(null)} title={viewingTitle} size="xl">
         <div className="flex justify-center bg-slate-100 rounded-lg p-2 min-h-[300px] items-center w-full">
           {viewingImage ? (

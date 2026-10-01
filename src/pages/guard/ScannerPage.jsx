@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/common/Icon';
-import { createWorker } from 'tesseract.js'; // UPDATED: Using persistent worker
+import { createWorker } from 'tesseract.js';
 import levenshtein from 'fast-levenshtein';
-import { collection, onSnapshot } from 'firebase/firestore'; // UPDATED: Using live sync
+import { collection, onSnapshot, addDoc } from 'firebase/firestore'; 
 import { db } from '../../config/firebase'; 
 import { aiService } from '../../services/aiService';
 
@@ -12,19 +12,20 @@ export default function ScannerPage() {
   const [phase, setPhase] = useState('idle'); 
   const [result, setResult] = useState(null);
   
+  // THE FIX: Track the guard's selected mode for UI and a Ref for the scanner loop
+  const [scanTargetUI, setScanTargetUI] = useState('Student');
+  const scanTargetRef = useRef('Student');
+  
   const videoRef = useRef(null);
   const isScanningRef = useRef(false);
   const workerRef = useRef(null);
   const vehiclesCacheRef = useRef([]);
 
-  // 1. ENGINE SETUP: Pre-warm OCR and sync DB into local memory
   useEffect(() => {
-    // Keep a live local copy of the database. Updates instantly if BAO issues a new sticker.
     const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
       vehiclesCacheRef.current = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     });
 
-    // Spin up Tesseract once in the background
     const initWorker = async () => {
       workerRef.current = await createWorker('eng');
     };
@@ -36,7 +37,6 @@ export default function ScannerPage() {
     };
   }, []);
 
-  // 2. CAMERA LIFECYCLE
   useEffect(() => {
     let activeStream = null;
 
@@ -110,21 +110,18 @@ export default function ScannerPage() {
     try {
       const base64Frame = canvas.toDataURL('image/jpeg', 0.7);
       
-      // Send to Roboflow
       const aiResult = await aiService.verifySticker(base64Frame);
 
       if (!aiResult.success || !aiResult.isDetected) {
-        setTimeout(processFrame, 400); // Sped up retry interval
+        setTimeout(processFrame, 400); 
         return;
       }
 
-      // Ensure OCR worker is ready
       if (!workerRef.current) {
         setTimeout(processFrame, 400);
         return;
       }
 
-      // Fast Local OCR Processing
       const { data: { text } } = await workerRef.current.recognize(canvas);
       const cleanedText = cleanOCRText(text);
 
@@ -133,10 +130,16 @@ export default function ScannerPage() {
         return;
       }
 
-      // Fast Local Database Matching (0ms latency)
       const vehicles = vehiclesCacheRef.current;
+      const currentTarget = scanTargetRef.current; // Grab the live Ref value
+
+      // THE FIX: Enforce the Guard's toggle selection before checking serial numbers
       const matchedVehicle = vehicles.find(v => {
         if (!v.stickerSerial) return false;
+        
+        const vType = v.registrantType || 'Student'; 
+        if (vType.toLowerCase() !== currentTarget.toLowerCase()) return false;
+        
         return levenshtein.get(cleanedText, v.stickerSerial.toUpperCase()) <= 2;
       });
 
@@ -150,7 +153,7 @@ export default function ScannerPage() {
           owner: 'N/A', 
           make: 'N/A', 
           serial: cleanedText, 
-          alert: 'No record found in the database.' 
+          alert: `No ${currentTarget} record found for this sticker.` 
         };
       } else if (matchedVehicle.accreditationStatus === 'Revoked' || matchedVehicle.status === 'revoked') {
         finalResult = { 
@@ -197,6 +200,18 @@ export default function ScannerPage() {
         };
       }
 
+      try {
+        await addDoc(collection(db, 'entry_logs'), {
+          plateNumber: finalResult.plateNumber,
+          serial: finalResult.serial,
+          result: finalResult.status,
+          owner: finalResult.owner || 'Unknown',
+          timestamp: new Date().toISOString()
+        });
+      } catch (dbErr) {
+        console.error("Failed to save scan to history:", dbErr);
+      }
+
       isScanningRef.current = false;
       setResult(finalResult);
       setPhase('result');
@@ -210,6 +225,11 @@ export default function ScannerPage() {
       setTimeout(processFrame, 800);
     }
   };
+
+  function handleTargetSwitch(target) {
+    scanTargetRef.current = target;
+    setScanTargetUI(target);
+  }
 
   function toggleScan() {
     if (phase === 'scanning') {
@@ -245,6 +265,26 @@ export default function ScannerPage() {
       {phase !== 'result' && (
         <div className="flex flex-1 flex-col px-4 pb-4">
           
+          {/* THE FIX: Guard Toggle UI */}
+          <div className="flex rounded-xl bg-slate-800 p-1 mb-4 shadow-inner">
+            <button
+              onClick={() => handleTargetSwitch('Student')}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition-all ${
+                scanTargetUI === 'Student' ? 'bg-primary-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Student
+            </button>
+            <button
+              onClick={() => handleTargetSwitch('Faculty')}
+              className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition-all ${
+                scanTargetUI === 'Faculty' ? 'bg-primary-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Faculty
+            </button>
+          </div>
+
           <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-3xl bg-black shadow-2xl border border-slate-800">
             <video 
               ref={videoRef} 
@@ -268,7 +308,7 @@ export default function ScannerPage() {
 
             {phase === 'scanning' && (
               <div className="absolute bottom-6 z-10 rounded-full bg-black/80 px-6 py-3 text-base font-bold tracking-wide text-white backdrop-blur-md">
-                Scanning... Please hold still.
+                Scanning {scanTargetUI}s...
               </div>
             )}
           </div>
@@ -281,7 +321,7 @@ export default function ScannerPage() {
               }`}
             >
               <Icon name={phase === 'scanning' ? 'x' : 'camera'} className="h-7 w-7" />
-              {phase === 'scanning' ? 'Stop Scanning' : 'Start Auto-Scan'}
+              {phase === 'scanning' ? 'Stop Scanning' : `Start Auto-Scan`}
             </button>
           </div>
         </div>
