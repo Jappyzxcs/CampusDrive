@@ -20,6 +20,8 @@ import VehicleDetailsPage from '../pages/student/VehicleDetailsPage';
 import RenewalRequestPage from '../pages/student/RenewalRequestPage';
 import NotificationsPage from '../pages/student/NotificationsPage';
 import ProfilePage from '../pages/student/ProfilePage';
+import UpdateORPage from '../pages/student/UpdateORPage';
+import UpdateLicensePage from '../pages/student/UpdateLicensePage';
 
 // --- VISITOR ---
 import VisitorDashboard from '../pages/visitor/VisitorDashboard';
@@ -35,7 +37,7 @@ import StickerManagementPage from '../pages/admin/StickerManagementPage';
 import VisitorApprovalsPage from '../pages/admin/VisitorApprovalsPage';
 import UserManagementPage from '../pages/admin/UserManagementPage';
 import EntryLogsPage from '../pages/admin/EntryLogsPage';
-import ReportsAndAuditPage from '../pages/admin/ReportsAndAuditPage'; // THE FIX: Replaced Reports & Audit
+import ReportsAndAuditPage from '../pages/admin/ReportsAndAuditPage';
 import SettingsPage from '../pages/admin/SettingsPage';
 
 // --- GUARD ---
@@ -68,6 +70,10 @@ export const router = createBrowserRouter(
           <Route path={ROUTES.STUDENT_RENEWAL} element={<RenewalRequestPage />} handle={{ title: 'Renew Registration' }} />
           <Route path={ROUTES.STUDENT_NOTIFICATIONS} element={<NotificationsPage />} handle={{ title: 'Notifications' }} />
           <Route path={ROUTES.STUDENT_PROFILE} element={<ProfilePage />} handle={{ title: 'Profile' }} />
+          
+          {/* NEW OR AND LICENSE UPDATE ROUTES */}
+          <Route path={ROUTES.STUDENT_UPDATE_OR} element={<UpdateORPage />} handle={{ title: 'Update Official Receipt' }} />
+          <Route path={ROUTES.STUDENT_UPDATE_LICENSE} element={<UpdateLicensePage />} handle={{ title: 'Update License' }} />
         </Route>
       </Route>
 
@@ -91,7 +97,7 @@ export const router = createBrowserRouter(
           <Route path={ROUTES.ADMIN_VISITOR_APPROVALS} element={<VisitorApprovalsPage />} handle={{ title: 'Visitor Approvals' }} />
           <Route path={ROUTES.ADMIN_USER_MANAGEMENT} element={<UserManagementPage />} handle={{ title: 'User Management' }} />
           <Route path={ROUTES.ADMIN_ENTRY_LOGS} element={<EntryLogsPage />} handle={{ title: 'Entry Logs' }} />
-          <Route path={ROUTES.ADMIN_REPORTS} element={<ReportsAndAuditPage />} handle={{ title: 'Reports & Hub' }} /> {/* THE FIX: Points to unified hub */}
+          <Route path={ROUTES.ADMIN_REPORTS} element={<ReportsAndAuditPage />} handle={{ title: 'Reports & Hub' }} /> 
           <Route path={ROUTES.ADMIN_SETTINGS} element={<SettingsPage />} handle={{ title: 'Settings' }} />
         </Route>
       </Route>

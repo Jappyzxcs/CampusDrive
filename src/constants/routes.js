@@ -1,5 +1,3 @@
-// Centralized route paths so no page hardcodes a URL string. 
-
 export const ROUTES = {
   // Auth
   LOGIN: '/login',
@@ -14,6 +12,10 @@ export const ROUTES = {
   STUDENT_RENEWAL: '/student/vehicles/:vehicleId/renew',
   STUDENT_NOTIFICATIONS: '/student/notifications',
   STUDENT_PROFILE: '/student/profile',
+  
+  // NEW ROUTES FOR DOCUMENT UPDATES
+  STUDENT_UPDATE_OR: '/update-or/:vehicleId',
+  STUDENT_UPDATE_LICENSE: '/update-license/:vehicleId',
 
   // Visitor
   VISITOR_DASHBOARD: '/visitor/dashboard',
@@ -31,7 +33,7 @@ export const ROUTES = {
   ADMIN_USER_MANAGEMENT: '/admin/users',
   ADMIN_ENTRY_LOGS: '/admin/entry-logs',
   ADMIN_REPORTS: '/admin/reports', 
-  ADMIN_SETTINGS: '/admin/settings', // THE FIX: Brought this back!
+  ADMIN_SETTINGS: '/admin/settings', 
 
   // Security Guard
   GUARD_DASHBOARD: '/guard/dashboard',

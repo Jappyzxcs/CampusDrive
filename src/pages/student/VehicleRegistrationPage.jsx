@@ -716,7 +716,6 @@ export default function VehicleRegistrationPage() {
       if (!form.yearAndSection.trim()) next.yearAndSection = 'Required';
     } else if (form.registrantType === 'Faculty') {
       if (!form.employeeId.trim()) next.employeeId = 'Required';
-      if (!form.companyId.trim()) next.companyId = 'Required'; 
     }
 
     if (vehiclePhotos.length < 1) {
@@ -978,24 +977,51 @@ export default function VehicleRegistrationPage() {
                 <SelectField id="vehicleType" label="Vehicle Type" required options={VEHICLE_TYPES} value={form.vehicleType} error={errors.vehicleType} onChange={(e) => update('vehicleType', e.target.value)} />
               </div>
 
-              {form.registrantType === 'Student' && (
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 rounded-lg bg-slate-50 p-4 border border-slate-200">
-                  <TextField id="studentId" label="Student ID" required value={form.studentId} error={errors.studentId} onChange={(e) => update('studentId', e.target.value)} />
-                  <TextField id="yearAndSection" label="Year and Section" placeholder="e.g. BSIT 4A" required value={form.yearAndSection} error={errors.yearAndSection} onChange={(e) => update('yearAndSection', e.target.value)} />
-                </div>
-              )}
-              {form.registrantType === 'Faculty' && (
-                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 rounded-lg bg-slate-50 p-4 border border-slate-200">
-                  <TextField id="employeeId" label="Employee ID" required value={form.employeeId} error={errors.employeeId} onChange={(e) => update('employeeId', e.target.value)} />
-                  <TextField id="companyId" label="Company ID" required value={form.companyId} error={errors.companyId} onChange={(e) => update('companyId', e.target.value)} />
-                </div>
-              )}
-
               <hr className="border-slate-100" />
 
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                 <TextField id="plateNumber" label="License Plate Number" required value={form.plateNumber} error={errors.plateNumber} onChange={(e) => update('plateNumber', e.target.value)} />
-              </div>
+<div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+  {form.registrantType === 'Student' && (
+    <>
+      <TextField 
+        id="studentId" 
+        label="Student ID" 
+        required 
+        value={form.studentId} 
+        error={errors.studentId} 
+        onChange={(e) => update('studentId', e.target.value)} 
+      />
+      <TextField 
+        id="yearAndSection" 
+        label="Year and Section" 
+        placeholder="e.g. BSIT 4A" 
+        required 
+        value={form.yearAndSection} 
+        error={errors.yearAndSection} 
+        onChange={(e) => update('yearAndSection', e.target.value)} 
+      />
+    </>
+  )}
+
+  {form.registrantType === 'Faculty' && (
+    <TextField 
+      id="employeeId" 
+      label="Employee ID" 
+      required 
+      value={form.employeeId} 
+      error={errors.employeeId} 
+      onChange={(e) => update('employeeId', e.target.value)} 
+    />
+  )}
+
+  <TextField 
+    id="plateNumber" 
+    label="License Plate Number" 
+    required 
+    value={form.plateNumber} 
+    error={errors.plateNumber} 
+    onChange={(e) => update('plateNumber', e.target.value)} 
+  />
+</div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">

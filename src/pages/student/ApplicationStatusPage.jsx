@@ -21,7 +21,6 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-// THE FIX: Dynamically generate the timeline if it's missing from the database
 function generateTimeline(app) {
   if (app.timeline && Array.isArray(app.timeline)) return app.timeline;
   
@@ -55,20 +54,30 @@ function generateTimeline(app) {
        description: app.revokeReason || app.rejectReason 
      });
   }
-  
   return steps;
 }
 
 export default function ApplicationStatusPage() {
   const { user } = useAuth();
   
-  const { data: applications, isLoading } = useAsyncData(async () => {
-    if (!user) return [];
+  // THE FIX: We now fetch BOTH the applications and the user's vehicles to map IDs properly
+  const { data, isLoading } = useAsyncData(async () => {
+    if (!user) return { applications: [], vehicles: [] };
     const userId = user.id || user.uid; 
-    const q = query(collection(db, 'applications'), where('userId', '==', userId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    const appQ = query(collection(db, 'applications'), where('userId', '==', userId));
+    const appSnap = await getDocs(appQ);
+    const fetchedApplications = appSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const vehQ = query(collection(db, 'vehicles'), where('ownerId', '==', userId));
+    const vehSnap = await getDocs(vehQ);
+    const fetchedVehicles = vehSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    return { applications: fetchedApplications, vehicles: fetchedVehicles };
   }, [user]);
+
+  const applications = data?.applications || [];
+  const vehicles = data?.vehicles || [];
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
@@ -76,17 +85,41 @@ export default function ApplicationStatusPage() {
   const debouncedSearch = useDebouncedValue(search);
 
   const filtered = useMemo(() => {
-    if (!applications) return [];
     return applications.filter((app) => {
       const typeStr = app.type || 'New Registration';
-      const matchesSearch = typeStr.toLowerCase().includes(debouncedSearch.toLowerCase());
+      const plate = app.vehicleDetails?.plateNumber || '';
+      const combinedSearchStr = `${typeStr} ${plate}`.toLowerCase();
+      
+      const matchesSearch = combinedSearchStr.includes(debouncedSearch.toLowerCase());
       const matchesStatus = !status || app.status === status;
       return matchesSearch && matchesStatus;
     });
   }, [applications, debouncedSearch, status]);
 
   const columns = [
-    { key: 'type', header: 'Application', render: (row) => row.type || 'New Registration', sortable: true },
+    { 
+      key: 'type', 
+      header: 'Application', 
+      render: (row) => {
+        const make = row.vehicleDetails?.vehicleType || row.vehicleDetails?.make || 'VEHICLE';
+        const plate = row.vehicleDetails?.plateNumber || 'NO PLATE';
+        const color = row.nlpExtractedData?.color || 'UNKNOWN COLOR';
+        
+        if (row.vehicleDetails) {
+          return (
+            <div className="flex flex-col">
+              <span className="font-bold text-slate-800 uppercase text-xs tracking-wide">
+                ({make} - {plate} - {color})
+              </span>
+              <span className="text-[10px] text-slate-400 uppercase mt-0.5">{row.type || 'New Registration'}</span>
+            </div>
+          );
+        }
+        
+        return <span className="text-sm font-medium">{row.type || 'New Registration'}</span>;
+      }, 
+      sortable: true 
+    },
     { key: 'submittedDate', header: 'Submitted', render: (row) => row.submittedDate || row.createdAt || '—', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
     { 
@@ -94,23 +127,23 @@ export default function ApplicationStatusPage() {
       header: 'Reviewed By', 
       render: (row) => {
         if (row.reviewedBy) return <span className="font-medium text-slate-800">{row.reviewedBy}</span>;
-        
         const status = (row.status || '').toLowerCase();
         if (status === 'pending' || status === 'under_review') {
           return <span className="text-slate-400 italic text-xs">Pending Review...</span>;
         }
-        
-        // Fallback if the application was processed but no specific admin name was saved
         return <span className="font-medium text-slate-700">GSU Admin</span>; 
       } 
     },
   ];
 
+  // THE FIX: Check if the selected application is active and map to its vehicle
+  const isUpdatable = selected ? ['approved', 'completed', 'paid', 'active'].includes((selected.status || '').toLowerCase()) : false;
+  const selectedVehicle = selected ? vehicles.find(v => v.applicationId === selected.id) : null;
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
-          {/* THE FIX: Modernized Typography to match Sidebar updates */}
           <h2 className="text-2xl font-bold font-sans text-slate-800 tracking-tight">Application Status</h2>
           <p className="text-sm font-medium text-slate-500 mt-1">Track your registration and renewal applications.</p>
         </div>
@@ -123,7 +156,7 @@ export default function ApplicationStatusPage() {
         <SearchFilterBar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search by application type…"
+          searchPlaceholder="Search by plate or application type…"
           filters={[{ key: 'status', label: 'Status', options: STATUS_OPTIONS }]}
           activeFilters={{ status }}
           onFilterChange={(_, value) => setStatus(value)}
@@ -154,8 +187,23 @@ export default function ApplicationStatusPage() {
               </p>
             )}
             
-            {/* THE FIX: Passing dynamically generated steps */}
             <Timeline steps={generateTimeline(selected)} />
+
+            {/* THE FIX: Document Renewal Section only appears for Active/Paid applications */}
+            {isUpdatable && selectedVehicle && (
+              <div className="mt-2 border-t border-slate-100 pt-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-1">Document Renewal</h3>
+                <p className="text-xs text-slate-500 mb-4">If your documents are expiring, upload your renewed files here to maintain campus access.</p>
+                <div className="flex gap-3">
+                  <Link to={`/update-or/${selectedVehicle.id}`} className="flex-1 btn-secondary flex items-center justify-center gap-2">
+                     Update OR
+                  </Link>
+                  <Link to={`/update-license/${selectedVehicle.id}`} className="flex-1 btn-secondary flex items-center justify-center gap-2">
+                     Update License
+                  </Link>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </Modal>
