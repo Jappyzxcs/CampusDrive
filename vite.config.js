@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react(), basicSsl()],
   
   // THE FIX: Tell Vite to build for the GitHub Pages sub-path
-  base: '/CampusDrive/', 
+  base: '/', 
 
   server: {
     port: 5173,
