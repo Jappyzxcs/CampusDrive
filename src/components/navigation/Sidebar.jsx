@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Icon } from '../common/Icon';
 import { Seal } from '../common/Seal';
@@ -10,6 +11,9 @@ import { notificationService } from '../../services/notificationService';
 export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
   const items = NAV_CONFIG[role] || [];
   const { user } = useAuth();
+  
+  // Desktop collapse state
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Silently fetch the user's notifications in the background
   const { data: notifications } = useAsyncData(
@@ -17,7 +21,6 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
     [user?.id]
   );
   
-  // Check if any of them are currently unread
   const hasUnread = notifications?.some(n => !n.read);
 
   return (
@@ -31,29 +34,58 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col bg-primary-900 text-primary-100 transition-transform duration-200
-          lg:static lg:translate-x-0
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col bg-primary-900 text-primary-100 transition-all duration-300 ease-in-out
+          lg:sticky lg:top-0 lg:h-screen lg:translate-x-0
+          ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${isCollapsed ? 'w-64 lg:w-20' : 'w-64'}
+        `}
       >
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-5">
-          <Seal size="sm" />
-          <div className="leading-tight">
-            <p className="text-sm font-semibold text-white">CampusDrive</p>
-            <p className="text-[11px] uppercase tracking-wide text-primary-300">
-              {ROLE_LABELS[role]}
-            </p>
+        {/* Header Area */}
+        <div className={`flex items-center border-b border-white/10 py-5 transition-all ${isCollapsed ? 'flex-col gap-4 px-2' : 'justify-between px-5'}`}>
+          <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
+            <Seal size="sm" className="flex-none" />
+            {!isCollapsed && (
+              <div className="leading-tight overflow-hidden whitespace-nowrap">
+                <p className="text-sm font-semibold text-white">CampusDrive</p>
+                <p className="text-[11px] uppercase tracking-wide text-primary-300">
+                  {ROLE_LABELS[role]}
+                </p>
+              </div>
+            )}
           </div>
+          
+          {/* THE FIX: Replaced Chevron Arrows with a Smooth Toggle Switch */}
+          <button 
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="hidden lg:flex items-center justify-center rounded-md p-1.5 text-primary-400 hover:bg-primary-800/60 hover:text-white transition-colors"
+            title={isCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="5" width="22" height="14" rx="7" ry="7" />
+              <circle 
+                cx="8" 
+                cy="12" 
+                r="3" 
+                className="transition-transform duration-300 ease-in-out"
+                style={{ transform: isCollapsed ? 'translateX(0)' : 'translateX(8px)' }}
+              />
+            </svg>
+          </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-3">
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3">
           <ul className="flex flex-col gap-0.5">
             {items.map((item) => (
               <li key={item.to}>
                 <NavLink
                   to={item.to}
                   onClick={onClose}
+                  title={isCollapsed ? item.label : undefined} // Tooltip appears when collapsed
                   className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-r-md border-l-[3px] px-3 py-2.5 text-sm font-medium transition-colors ${
+                    `group relative flex items-center rounded-r-md border-l-[3px] py-2.5 transition-colors ${
+                      isCollapsed ? 'justify-center px-0' : 'gap-3 px-3'
+                    } ${
                       isActive
                         ? 'border-[#F5C400] bg-primary-800 text-white'
                         : 'border-transparent text-primary-200 hover:bg-primary-800/60 hover:text-white'
@@ -61,11 +93,21 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
                   }
                 >
                   <Icon name={item.icon} className="h-5 w-5 flex-none" />
-                  {item.label}
                   
-                  {/* THE FIX: Inject the glowing red dot if there are unread notifications */}
+                  {!isCollapsed && (
+                    <span className="whitespace-nowrap text-sm font-medium">
+                      {item.label}
+                    </span>
+                  )}
+                  
+                  {/* Notification Dot */}
                   {item.label === 'Notifications' && hasUnread && (
-                    <span className="ml-auto h-2 w-2 flex-none rounded-full bg-danger-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" aria-hidden="true" />
+                    <span 
+                      className={`absolute flex-none rounded-full bg-danger-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] ${
+                        isCollapsed ? 'top-2.5 right-1/4 h-2 w-2' : 'right-3 h-2 w-2'
+                      }`} 
+                      aria-hidden="true" 
+                    />
                   )}
                 </NavLink>
               </li>
@@ -73,7 +115,8 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
           </ul>
         </nav>
 
-        {quickInfo && (
+        {/* Quick Info (Hidden when collapsed) */}
+        {quickInfo && !isCollapsed && (
           <div className="mx-3 mb-3 rounded-lg bg-primary-800/60 px-3 py-2.5">
             <p className="text-[10px] uppercase tracking-wide text-primary-400">
               {quickInfo.label}
@@ -94,10 +137,13 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-5 py-4">
-          <p className="text-[11px] leading-snug text-primary-400">
-            LSPU &ndash; Los Ba&ntilde;os Campus &middot; General Services Utility
-          </p>
+        {/* Footer & Sign Out */}
+        <div className={`flex items-center gap-2 border-t border-white/10 py-4 ${isCollapsed ? 'justify-center px-2' : 'justify-between px-5'}`}>
+          {!isCollapsed && (
+            <p className="text-[11px] leading-snug text-primary-400 whitespace-nowrap overflow-hidden text-ellipsis">
+              LSPU &ndash; LB Campus &middot; GSU
+            </p>
+          )}
           {onSignOut && (
             <button
               type="button"

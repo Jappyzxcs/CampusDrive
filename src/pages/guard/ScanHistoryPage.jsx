@@ -8,6 +8,7 @@ import { DashboardCard } from '../../components/cards/DashboardCard';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
+
 const RESULT_OPTIONS = [
   { value: 'valid', label: 'Valid' },
   { value: 'revoked', label: 'Revoked' },

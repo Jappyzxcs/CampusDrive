@@ -11,9 +11,12 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../constants/roles';
 
+// THE FIX: Added 'completed' and 'approved' to the dropdown filters so they show up
 const STATUS_OPTIONS = [
   { value: 'active', label: 'Active/Issued' },
-  { value: 'for_payment', label: 'Awaiting BAO Payment' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'for_payment', label: 'Awaiting Payment' },
   { value: 'expired', label: 'Expired' },
   { value: 'revoked', label: 'Revoked' }, 
 ];
@@ -23,7 +26,6 @@ const TYPE_OPTIONS = [
   { value: 'Motorcycle', label: 'Motorcycle' },
 ];
 
-// NEW: Role filter for Note 5
 const ROLE_OPTIONS = [
   { value: 'Student', label: 'Student' },
   { value: 'Faculty', label: 'Faculty' },
@@ -48,11 +50,9 @@ export default function VehicleManagementPage() {
   const filtered = useMemo(() => {
     if (!vehicles) return [];
     return vehicles
-      // THE FIX: Forcefully exclude any leftover visitor test data from the database
       .filter((v) => 
         v.registrantType !== 'Visitor' && 
         v.status !== 'Visit Completed' && 
-        v.status !== 'completed' && 
         v.status !== 'inside_campus'
       )
       .filter(
@@ -68,7 +68,6 @@ export default function VehicleManagementPage() {
   const columns = [
     { key: 'plateNumber', header: 'Plate', sortable: true, render: (row) => <span className="font-semibold text-slate-800">{row.plateNumber}</span> },
     { key: 'ownerName', header: 'Owner', sortable: true },
-    // NEW: Explicitly shows Student/Faculty role
     { key: 'registrantType', header: 'Role', render: (row) => <span className="text-sm font-medium text-slate-600">{row.registrantType || 'Student'}</span> },
     { key: 'type', header: 'Type', sortable: true },
     { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
@@ -105,7 +104,7 @@ export default function VehicleManagementPage() {
           searchPlaceholder="Search by plate or owner…"
           filters={[
             { key: 'status', label: 'Status', options: STATUS_OPTIONS },
-            { key: 'registrantType', label: 'Role', options: ROLE_OPTIONS }, // NEW: Added to UI
+            { key: 'registrantType', label: 'Role', options: ROLE_OPTIONS },
             { key: 'type', label: 'Type', options: TYPE_OPTIONS },
           ]}
           activeFilters={filters}

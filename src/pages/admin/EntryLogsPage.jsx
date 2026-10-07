@@ -65,8 +65,12 @@ export default function EntryLogsPage() {
         </span>
       )
     },
-    { key: 'gate', header: 'Gate' },
-    { key: 'guardName', header: 'Guard' },
+    // THE FIX: Removed Gate, ensured Guard Name renders gracefully
+    { 
+      key: 'guardName', 
+      header: 'Guard', 
+      render: (row) => <span className="font-medium text-slate-700">{row.guardName || 'Unknown Guard'}</span> 
+    },
     { key: 'result', header: 'Result', render: (row) => <StatusBadge status={row.result} /> },
   ];
 

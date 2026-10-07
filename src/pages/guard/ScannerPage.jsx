@@ -6,8 +6,10 @@ import levenshtein from 'fast-levenshtein';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore'; 
 import { db } from '../../config/firebase'; 
 import { aiService } from '../../services/aiService';
+import { useAuth } from '../../context/AuthContext';
 
 export default function ScannerPage() {
+  const { user } = useAuth();
   const { showToast } = useToast();
   const [phase, setPhase] = useState('idle'); 
   const [result, setResult] = useState(null);
@@ -20,6 +22,8 @@ export default function ScannerPage() {
   const isScanningRef = useRef(false);
   const workerRef = useRef(null);
   const vehiclesCacheRef = useRef([]);
+
+  
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
@@ -206,6 +210,7 @@ export default function ScannerPage() {
           serial: finalResult.serial,
           result: finalResult.status,
           owner: finalResult.owner || 'Unknown',
+          guardName: user?.fullName || user?.name || 'On-Duty Guard', // THE FIX: Saves the Guard's Name!
           timestamp: new Date().toISOString()
         });
       } catch (dbErr) {

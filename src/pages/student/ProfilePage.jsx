@@ -3,8 +3,6 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
-import { DashboardCard } from '../../components/cards/DashboardCard';
-import { TextField } from '../../components/forms/TextField';
 import { ROLE_LABELS } from '../../constants/roles';
 import { useToast } from '../../context/ToastContext';
 
@@ -12,7 +10,6 @@ export default function ProfilePage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   
-  // FIXED: Changed user.fullName to user.name to match the database
   const [name, setName] = useState(user?.name || '');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -22,7 +19,6 @@ export default function ProfilePage() {
     
     setIsSaving(true);
     try {
-      // FIXED: Actually save the updated name to Firestore
       const userRef = doc(db, 'users', user.id);
       await updateDoc(userRef, { name: name.trim() });
       
@@ -35,7 +31,6 @@ export default function ProfilePage() {
     }
   }
 
-  // NEW: Allow users to trigger their own password reset emails
   async function handlePasswordReset() {
     if (!confirm(`Send password reset email to ${user.email}?`)) return;
     try {
@@ -46,7 +41,6 @@ export default function ProfilePage() {
     }
   }
 
-  // FIXED: Ensure initials don't crash if the name is temporarily undefined
   const initials = (name || 'U')
     .split(' ')
     .map((p) => p[0])
@@ -55,76 +49,115 @@ export default function ProfilePage() {
     .toUpperCase();
 
   return (
-    <div className="mx-auto flex max-w-xl flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold text-primary-900">Profile</h2>
-        <p className="text-sm text-slate-500">Manage your account details.</p>
+    // Removed max-w-4xl. The layout will now stretch fully like the dashboard.
+    <div className="flex w-full flex-col gap-6 font-sans text-slate-800 pb-10">
+      
+      {/* Header Section */}
+      <div className="flex flex-col gap-1 mb-2">
+        <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
+          Profile
+        </h1>
+        <p className="text-base text-slate-500 font-medium">
+          Manage your account details.
+        </p>
       </div>
 
-      <DashboardCard>
-        <div className="mb-6 flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-100 text-lg font-semibold text-primary-800">
+      {/* Main Profile Card - Now spans the full width of the content area */}
+      <div className="bg-white w-full rounded-2xl border border-slate-200 shadow-sm p-8">
+        
+        {/* User Info & Avatar Header */}
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-8">
+          <div className="flex items-center gap-5">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 shadow-sm text-xl font-bold text-blue-600">
               {initials}
             </span>
             <div>
-              <p className="font-semibold text-slate-800">{user?.name || 'User'}</p>
-              <p className="text-sm text-slate-500">{ROLE_LABELS[user?.role] || 'Student'}</p>
+              <p className="text-xl font-bold text-slate-900 tracking-tight">{user?.name || 'User'}</p>
+              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mt-0.5">
+                {ROLE_LABELS[user?.role] || 'Student'}
+              </p>
             </div>
           </div>
+          
           <button
             type="button"
             onClick={handlePasswordReset}
-            className="text-sm font-medium text-primary-700 hover:text-primary-800 transition-colors"
+            className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all"
           >
             Reset Password
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5" noValidate>
-          <TextField 
-            id="name" 
-            label="Full Name" 
-            value={name} 
-            onChange={(e) => setName(e.target.value)} 
-            required 
-            disabled={isSaving}
-          />
+        {/* Form Section - Constrained to max-w-3xl so fields aren't too stretched */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-3xl" noValidate>
           
-          {/* NEW: Displaying the data collected during registration */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <TextField 
-              id="institutionalId" 
-              label="Student / Employee ID" 
-              value={user?.institutionalId || 'N/A'} 
-              disabled 
+          <div className="w-full">
+            <label htmlFor="name" className="block text-sm font-bold text-slate-700 mb-2">
+              Full Name
+            </label>
+            <input
+              type="text"
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={isSaving}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60 disabled:bg-slate-50"
             />
-            <TextField 
-              id="college" 
-              label="College / Department" 
-              value={user?.college || 'N/A'} 
-              disabled 
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+            <div>
+              <label htmlFor="institutionalId" className="block text-sm font-bold text-slate-700 mb-2">
+                Student / Employee ID
+              </label>
+              <input
+                type="text"
+                id="institutionalId"
+                value={user?.institutionalId || 'N/A'}
+                disabled
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="college" className="block text-sm font-bold text-slate-700 mb-2">
+                College / Department
+              </label>
+              <input
+                type="text"
+                id="college"
+                value={user?.college || 'N/A'}
+                disabled
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          <div className="w-full">
+            <label htmlFor="email" className="block text-sm font-bold text-slate-700 mb-2">
+              Institutional Email
+            </label>
+            <input
+              type="email"
+              id="email"
+              value={user?.email || ''}
+              disabled
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
             />
           </div>
 
-          <TextField 
-            id="email" 
-            label="Institutional Email" 
-            value={user?.email || ''} 
-            disabled 
-          />
-
-          <div className="flex justify-end border-t border-slate-100 pt-5 mt-2">
+          <div className="flex justify-start border-t border-slate-100 pt-6 mt-4">
             <button 
               type="submit" 
-              className="btn-primary" 
               disabled={isSaving || name === user?.name}
+              className="px-8 py-3 rounded-xl bg-blue-600 text-white font-bold tracking-wide hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md"
             >
               {isSaving ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
         </form>
-      </DashboardCard>
+      </div>
     </div>
   );
 }

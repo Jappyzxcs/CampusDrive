@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { notificationService } from '../../services/notificationService'; 
-import { StatCard } from '../../components/cards/StatCard';
 import { DashboardCard } from '../../components/cards/DashboardCard';
-import { StatusBadge } from '../../components/common/StatusBadge';
 import { Timeline } from '../../components/common/Timeline';
 import { EmptyState } from '../../components/common/EmptyState';
 import { CardSkeleton, Skeleton } from '../../components/common/LoadingSkeleton';
@@ -78,7 +76,6 @@ function generateTimeline(app) {
 
 export default function StudentDashboard() {
   const { user } = useAuth();
-  
   const [applications, setApplications] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -152,108 +149,134 @@ export default function StudentDashboard() {
   }, [approvedVehicles, user.id]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h2 className="text-2xl font-bold font-sans text-slate-800 tracking-tight">
+    <div className="flex flex-col gap-8 min-h-screen font-sans text-slate-800">
+      {/* Header Section */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
           Welcome, {(user?.fullName || user?.name || 'User').split(' ')[0]}
-        </h2>
-        <p className="text-sm font-medium text-slate-500 mt-1">Here's the live status of your vehicle accreditation.</p>
+        </h1>
+        <p className="text-base text-slate-500 font-medium">Here's the live status of your vehicle accreditation.</p>
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
           <CardSkeleton /><CardSkeleton /><CardSkeleton />
         </div>
       ) : approvedVehicles.length === 0 ? (
-        <div className="rounded-xl bg-slate-50 border border-slate-200 p-6 text-center text-slate-500">
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-10 text-center text-slate-500 font-medium">
           No active or approved vehicles found.
         </div>
       ) : (
-        <div className="flex flex-col gap-8">
+        <div className="flex flex-col gap-10">
           {approvedVehicles.map((vehicle) => {
             const isRevoked = vehicle.status === 'revoked';
             
             return (
-              <div key={vehicle.id} className="flex flex-col gap-3">
-                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest pl-1 border-l-4 border-primary-500">
-                  {vehicle.plateNumber} &middot; {vehicle.vehicleDetails?.vehicleType || vehicle.make || 'Vehicle'}
-                </h3>
+              <div key={vehicle.id} className="flex flex-col gap-4">
                 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <StatCard
-                    label="Vehicle Status"
-                    value={
-                      isRevoked ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-danger-100 text-danger-700">
-                          Revoked
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800">
-                          Active
-                        </span>
-                      )
-                    }
-                    icon="car"
-                    tone={isRevoked ? 'danger' : 'accent'}
-                  />
-                  
-                  <StatCard
-                    label="Sticker Status"
-                    value={vehicle.stickerSerial ?? '—'}
-                    hint={vehicle.stickerSerial ? 'Serial number assigned' : 'Not yet assigned'}
-                    icon="sticker"
-                    tone="secondary"
-                  />
-                  
-                  <div className="flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm p-4 relative overflow-hidden">
-                    {isRevoked && <div className="absolute inset-0 bg-danger-50/50 backdrop-blur-[1px] z-10 flex items-center justify-center font-bold text-danger-700 uppercase tracking-widest">Revoked</div>}
-                    
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon name="alert" className="h-4 w-4 text-slate-400" />
-                      <h3 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Document Expirations</h3>
-                    </div>
-                    
-                    <div className="flex flex-col">
-                      <ExpiryRow 
-                        label="Sticker" 
-                        baseDate={vehicle.dateIssued || vehicle.reviewedDate || vehicle.registrationDate} 
-                        isSticker 
-                      />
-                      <ExpiryRow 
-                        label="OR Expiry" 
-                        baseDate={vehicle.nlpExtractedData?.orExpiry || vehicle.orExpiry} 
-                      />
-                      <ExpiryRow 
-                        label="License" 
-                        baseDate={vehicle.nlpExtractedData?.licenseExpiry || vehicle.licenseExpiry} 
-                      />
-                    </div>
-                  </div>
+                {/* Vehicle Pill/Identifier */}
+                <div className="inline-flex items-center self-start gap-2 px-4 py-2 bg-white rounded-full border border-slate-200 shadow-sm">
+                  <Icon name="car" className="w-4 h-4 text-slate-400" />
+                  <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">
+                    {vehicle.plateNumber} <span className="text-slate-300 mx-1">&bull;</span> {vehicle.vehicleDetails?.vehicleType || vehicle.make || 'Vehicle'}
+                  </h3>
                 </div>
+                
+                {/* Metrics Grid */}
+{/* Metrics Grid - Restored equal heights, but centered the internal content */}
+<div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+  
+  {/* Card 1: Vehicle Status */}
+  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
+    <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${isRevoked ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-500'}`}>
+      <Icon name="car" className="w-6 h-6" />
+    </div>
+    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+      Vehicle Status
+    </span>
+    <div>
+      {isRevoked ? (
+        <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-rose-100 text-rose-700 gap-1.5">
+          Revoked
+        </span>
+      ) : (
+        <span className="inline-flex items-center px-4 py-2 rounded-full text-sm font-bold bg-emerald-100 text-emerald-700 gap-1.5 shadow-sm border border-emerald-200">
+          <Icon name="check-circle" className="w-4 h-4" /> ACTIVE
+        </span>
+      )}
+    </div>
+  </div>
+  
+  {/* Card 2: Sticker Status */}
+  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center text-center hover:shadow-md transition-shadow">
+    <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center mb-4">
+      <Icon name="sticker" className="w-6 h-6" />
+    </div>
+    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+      Sticker Status
+    </span>
+    <h2 className="text-3xl font-extrabold font-sans text-slate-900 tracking-tight">
+      {vehicle.stickerSerial || '—'}
+    </h2>
+    <p className="text-xs font-medium text-slate-500 mt-2 flex items-center gap-1.5">
+      {vehicle.stickerSerial ? (
+        <><Icon name="check" className="w-4 h-4 text-emerald-500" /> Serial assigned</>
+      ) : 'Not yet assigned'}
+    </p>
+  </div>
+  
+  {/* Card 3: Document Expirations */}
+  <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 relative overflow-hidden flex flex-col justify-center hover:shadow-md transition-shadow">
+    {isRevoked && <div className="absolute inset-0 bg-white/60 backdrop-blur-sm z-10 flex items-center justify-center font-bold text-rose-700 uppercase tracking-widest">Revoked</div>}
+    
+    <div className="flex items-center gap-2 mb-5 border-b border-slate-100 pb-3">
+      <Icon name="alert-triangle" className="h-4 w-4 text-amber-500" />
+      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Document Expirations</h3>
+    </div>
+    
+    <div className="flex flex-col gap-2">
+      <ExpiryRow 
+        label="Sticker" 
+        baseDate={vehicle.dateIssued || vehicle.reviewedDate || vehicle.registrationDate} 
+        isSticker 
+      />
+      <ExpiryRow 
+        label="OR Expiry" 
+        baseDate={vehicle.nlpExtractedData?.orExpiry || vehicle.orExpiry} 
+      />
+      <ExpiryRow 
+        label="License" 
+        baseDate={vehicle.nlpExtractedData?.licenseExpiry || vehicle.licenseExpiry} 
+      />
+    </div>
+  </div>
+
+</div>
               </div>
             );
           })}
         </div>
       )}
 
-      <div className="w-full mt-4">
-        <DashboardCard title="Latest Application Activity">
-          {isLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-4 w-1/3" /><Skeleton className="h-4 w-1/2" />
-            </div>
-          ) : latestApplication ? (
-            <Timeline steps={generateTimeline(latestApplication)} />
-          ) : (
-            <EmptyState title="No applications yet" description="Register your vehicle to start the accreditation process." />
-          )}
-        </DashboardCard>
+      {/* Timeline Section */}
+      <div className="w-full mt-6 bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+        <h3 className="text-lg font-bold text-slate-900 mb-6">Latest Application Activity</h3>
+        {isLoading ? (
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-4 w-1/3 rounded-md" />
+            <Skeleton className="h-4 w-1/2 rounded-md" />
+          </div>
+        ) : latestApplication ? (
+          <Timeline steps={generateTimeline(latestApplication)} />
+        ) : (
+          <EmptyState title="No applications yet" description="Register your vehicle to start the accreditation process." />
+        )}
       </div>
     </div>
   );
 }
 
-// STANDARDIZED ROW: No Links, No Hover, Clean Formatting
+// Refactored ExpiryRow: Uses clean, colored pill tags for "days left"
 function ExpiryRow({ label, baseDate, isSticker = false }) {
   let dateStr = baseDate;
   
@@ -266,17 +289,41 @@ function ExpiryRow({ label, baseDate, isSticker = false }) {
   }
 
   const days = daysUntilSafe(dateStr);
-  const isExpiring = days !== null && days <= 30 && days >= 0;
-  const isExpired = days !== null && days < 0;
+  
+  let statusBadge = (
+    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+      N/A
+    </span>
+  );
+
+  if (days !== null) {
+    if (days < 0) {
+      statusBadge = (
+        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700">
+          Expired
+        </span>
+      );
+    } else if (days <= 30) {
+      statusBadge = (
+        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">
+          {days} days left
+        </span>
+      );
+    } else {
+      statusBadge = (
+        <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">
+          {days} days left
+        </span>
+      );
+    }
+  }
   
   return (
-    <div className="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
+    <div className="flex justify-between items-center py-2.5 border-b border-slate-50 last:border-0">
       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
         {label}
       </span>
-      <span className={`text-xs font-bold ${isExpiring ? 'text-danger-600 animate-pulse' : isExpired ? 'text-danger-800' : 'text-slate-700'}`}>
-        {days !== null ? (isExpired ? 'Expired' : `${days} days left`) : 'N/A'}
-      </span>
+      {statusBadge}
     </div>
   );
 }

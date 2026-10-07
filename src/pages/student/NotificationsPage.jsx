@@ -2,16 +2,15 @@ import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { notificationService } from '../../services/notificationService'; 
-import { DashboardCard } from '../../components/cards/DashboardCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Skeleton } from '../../components/common/LoadingSkeleton';
 import { Icon } from '../../components/common/Icon';
 
 const TYPE_STYLES = {
-  info: { icon: 'bell', className: 'bg-primary-50 text-primary-700' },
-  success: { icon: 'check', className: 'bg-accent-50 text-accent-700' },
-  warning: { icon: 'alert', className: 'bg-secondary-50 text-secondary-800' },
-  danger: { icon: 'alert', className: 'bg-danger-50 text-danger-700' },
+  info: { icon: 'bell', className: 'bg-blue-50 text-blue-500' },
+  success: { icon: 'check', className: 'bg-emerald-50 text-emerald-500' },
+  warning: { icon: 'alert-triangle', className: 'bg-amber-50 text-amber-500' },
+  danger: { icon: 'alert-circle', className: 'bg-rose-50 text-rose-500' },
 };
 
 function timeAgo(timestamp) {
@@ -42,48 +41,83 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold text-primary-900">Notifications</h2>
-        <p className="text-sm text-slate-500">Updates about your applications and accreditation.</p>
+    // Removed mx-auto, changed to max-w-4xl, letting it naturally left-align
+    <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
+      
+      {/* Header Section */}
+      <div className="flex flex-col gap-1 mb-2">
+        {/* Added font-sans to override the global serif font you were seeing */}
+        <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
+          Notifications
+        </h1>
+        <p className="text-base text-slate-500 font-medium">
+          Updates about your applications and accreditation.
+        </p>
       </div>
 
       {isLoading ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-16 w-full" />
-          <Skeleton className="h-16 w-full" />
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-20 w-full rounded-2xl" />
         </div>
       ) : !data || data.length === 0 ? (
-        <EmptyState title="You're all caught up" description="No notifications right now." />
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-10 text-center">
+          <EmptyState title="You're all caught up" description="No notifications right now." />
+        </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {data.map((n) => {
             const isRead = n.read || readIds.has(n.id);
             const style = TYPE_STYLES[n.type] || TYPE_STYLES.info;
             
             return (
-              <DashboardCard key={n.id} className={isRead ? 'opacity-70' : ''}>
-                <div className="flex gap-3">
-                  <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-full ${style.className}`}>
-                    <Icon name={style.icon} className="h-4 w-4" />
-                  </span>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-800">{n.title}</p>
-                      <span className="whitespace-nowrap text-xs text-slate-400">{timeAgo(n.timestamp)}</span>
-                    </div>
-                    <p className="mt-1 text-sm text-slate-500">{n.message}</p>
-                    {!isRead && (
+              <div 
+                key={n.id} 
+                // Tightened padding to p-5 for a sleeker profile
+                className={`relative flex gap-4 rounded-2xl border border-slate-200 p-5 transition-all duration-200 ${
+                  isRead 
+                    ? 'bg-slate-50/50 shadow-none border-slate-100 opacity-75' 
+                    : 'bg-white shadow-sm hover:shadow-md'
+                }`}
+              >
+                {/* Unread Dot Indicator */}
+                {!isRead && (
+                  <div className="absolute top-5 left-2 h-2 w-2 rounded-full bg-blue-500 shadow-sm" />
+                )}
+
+                {/* Status Icon */}
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${style.className}`}>
+                  <Icon name={style.icon} className="h-5 w-5" />
+                </div>
+                
+                {/* Content Body */}
+                <div className="flex flex-1 flex-col justify-center">
+                  <div className="flex items-start justify-between gap-4 mb-1">
+                    <h3 className={`text-sm tracking-wide ${isRead ? 'font-semibold text-slate-600' : 'font-bold text-slate-900'}`}>
+                      {n.title}
+                    </h3>
+                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                      {timeAgo(n.timestamp)}
+                    </span>
+                  </div>
+                  
+                  <p className="text-sm text-slate-500 leading-relaxed">
+                    {n.message}
+                  </p>
+                  
+                  {/* Action Button */}
+                  {!isRead && (
+                    <div className="mt-2">
                       <button
                         onClick={() => handleMarkAsRead(n.id)}
-                        className="mt-2 text-xs font-medium text-primary-700 hover:text-primary-800"
+                        className="inline-flex items-center text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors"
                       >
                         Mark as read
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              </DashboardCard>
+              </div>
             );
           })}
         </div>
