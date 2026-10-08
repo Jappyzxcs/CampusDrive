@@ -19,12 +19,12 @@ export default function StickerManagementPage() {
   const awaitingPayment = useMemo(() => {
     if (!vehicleData) return [];
     
-    // 1. Filter for vehicles needing payment
+    // THE FIX: Strictly filter out any status that means it's already done (like 'paid' or 'completed')
     const filtered = vehicleData.filter((v) => 
-      v.status === 'for_payment' || v.status === 'approved' || v.status === 'paid'
+      v.status === 'for_payment' || v.status === 'approved'
     );
 
-    // 2. Deduplicate by Plate Number
+    // 2. Deduplicate by Plate Number to prevent double-queuing the same car
     const uniqueVehicles = new Map();
     filtered.forEach((vehicle) => {
       const plate = (vehicle.plateNumber || '').toUpperCase().trim();
@@ -82,7 +82,6 @@ export default function StickerManagementPage() {
 
       const approvedRef = doc(db, 'approved_vehicles', vehicle.id);
       
-      // THE ULTIMATE FIX: If the Admin page stripped the role, extract it directly from the Application Type string!
       const appType = (vehicle.type || '').toLowerCase();
       const backupRole = appType.includes('faculty') ? 'Faculty' : appType.includes('student') ? 'Student' : null;
 
@@ -99,11 +98,14 @@ export default function StickerManagementPage() {
         vehicleImageUrl: vehicle.vehicleImageUrl || vehicle.imageUrl || vehicle.photoUrl || '', 
         accreditationStatus: 'Active',
         dateIssued: new Date().toISOString(),
-        // Save the foolproof role into the approved database so the guard scanner can read it
-        registrantType: userRole
+        registrantType: userRole,
+        
+        // THE FIX: Carry over the document expiration dates directly to the guard's scanner database!
+        orExpiry: vehicle.orExpiry || vehicle.nlpExtractedData?.orExpiry || null,
+        licenseExpiry: vehicle.licenseExpiry || vehicle.nlpExtractedData?.licenseExpiry || null
+        
       }, { merge: true });
       
-      // SEND STICKER ISSUED NOTIFICATION
       const ownerId = vehicle.ownerId || vehicle.userId;
       if (ownerId) {
         await notificationService.createNotification({

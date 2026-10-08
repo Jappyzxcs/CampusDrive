@@ -11,11 +11,9 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../constants/roles';
 
-// THE FIX: Added 'completed' and 'approved' to the dropdown filters so they show up
+// THE FIX: Cleaned up and reduced to the 4 essential statuses
 const STATUS_OPTIONS = [
-  { value: 'active', label: 'Active/Issued' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'approved', label: 'Approved' },
+  { value: 'active', label: 'Active' },
   { value: 'for_payment', label: 'Awaiting Payment' },
   { value: 'expired', label: 'Expired' },
   { value: 'revoked', label: 'Revoked' }, 
@@ -50,17 +48,29 @@ export default function VehicleManagementPage() {
   const filtered = useMemo(() => {
     if (!vehicles) return [];
     return vehicles
-      .filter((v) => 
-        v.registrantType !== 'Visitor' && 
-        v.status !== 'Visit Completed' && 
-        v.status !== 'inside_campus'
-      )
+      .filter((v) => {
+        const type = (v.registrantType || '').toLowerCase();
+        return type !== 'visitor'; 
+      })
       .filter(
         (v) =>
           v.plateNumber?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
           v.ownerName?.toLowerCase().includes(debouncedSearch.toLowerCase()),
       )
-      .filter((v) => !filters.status || v.status === filters.status)
+      .filter((v) => {
+        if (!filters.status) return true;
+        const vStatus = (v.status || '').toLowerCase();
+        
+        // THE FIX: Group similar database statuses into single, clean filter clicks
+        if (filters.status === 'active') {
+          return ['active', 'completed', 'visit completed', 'visit_completed'].includes(vStatus);
+        }
+        if (filters.status === 'for_payment') {
+          return ['for_payment', 'approved'].includes(vStatus);
+        }
+        
+        return vStatus === filters.status;
+      })
       .filter((v) => !filters.type || v.type === filters.type)
       .filter((v) => !filters.registrantType || v.registrantType === filters.registrantType); 
   }, [vehicles, debouncedSearch, filters]);
@@ -70,7 +80,17 @@ export default function VehicleManagementPage() {
     { key: 'ownerName', header: 'Owner', sortable: true },
     { key: 'registrantType', header: 'Role', render: (row) => <span className="text-sm font-medium text-slate-600">{row.registrantType || 'Student'}</span> },
     { key: 'type', header: 'Type', sortable: true },
-    { key: 'status', header: 'Status', render: (row) => <StatusBadge status={row.status} /> },
+    { key: 'status', header: 'Status', render: (row) => {
+        let fixedStatus = row.status || '';
+        const lowerStatus = fixedStatus.toLowerCase();
+        
+        if (['visit completed', 'completed', 'visit_completed'].includes(lowerStatus)) {
+          fixedStatus = 'active'; 
+        }
+        
+        return <StatusBadge status={fixedStatus} />;
+      } 
+    },
   ];
 
   const handleRevoke = async () => {
@@ -140,7 +160,11 @@ export default function VehicleManagementPage() {
             <Row label="Registered" value={selected.registrationDate ? new Date(selected.registrationDate).toLocaleDateString() : '—'} />
             <div className="flex justify-between items-center mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
               <span className="text-slate-700 font-medium">Current Status</span>
-              <StatusBadge status={selected.status} />
+              <StatusBadge status={
+                ['visit completed', 'completed', 'visit_completed'].includes((selected.status || '').toLowerCase()) 
+                ? 'active' 
+                : selected.status
+              } />
             </div>
           </div>
         )}

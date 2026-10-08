@@ -40,7 +40,6 @@ export default function VisitorVerificationPage() {
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
-        // Sort to get the most recently created visit if they have multiple
         const docs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         docs.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         setVisit(docs[0]);
@@ -103,6 +102,16 @@ export default function VisitorVerificationPage() {
 
   const outcome = notFound ? OUTCOME_COPY.not_found : visit ? OUTCOME_COPY[visit.status] : null;
 
+  // Formatting helper for the time logs
+  const formatTime = (isoString) => {
+    if (!isoString) return null;
+    return new Date(isoString).toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit', 
+      hour12: true 
+    });
+  };
+
   return (
     <div className="mx-auto flex max-w-lg flex-col gap-6">
       <div>
@@ -148,10 +157,33 @@ export default function VisitorVerificationPage() {
               <Row label="Plate Number" value={visit.plateNumber} highlight />
               <Row label="Purpose" value={visit.purpose} />
               <Row label="Host/Destination" value={visit.hostName} />
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide bg-emerald-100 text-emerald-800">
+              
+              <div className="flex justify-between items-center py-2.5 border-b border-slate-100 last:border-0">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Status</span>
+                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide ${
+                  visit.status === 'inside_campus' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                }`}>
                   {visit.status === 'inside_campus' ? 'On Campus' : visit.status}
                 </span>
               </div>
+
+              {/* THE FIX: Visually display the timestamps as requested by the Advicer */}
+              {(visit.checkInTime || visit.checkOutTime) && (
+                <div className="mt-2 pt-2 border-t border-slate-100">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Icon name="clock" className="h-4 w-4 text-slate-400" />
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Gate Activity Log</span>
+                  </div>
+                  
+                  {visit.checkInTime && (
+                    <Row label="Time In" value={formatTime(visit.checkInTime)} />
+                  )}
+                  {visit.checkOutTime && (
+                    <Row label="Time Out" value={formatTime(visit.checkOutTime)} />
+                  )}
+                </div>
+              )}
+            </div>
           )}
 
           {visit?.status === 'approved' && (
@@ -160,7 +192,7 @@ export default function VisitorVerificationPage() {
               disabled={isUpdating}
               className="mt-4 rounded-xl bg-white px-6 py-4 text-lg font-black text-emerald-700 shadow-xl active:scale-95 transition-all disabled:opacity-60"
             >
-              {isUpdating ? 'Updating Database...' : 'Allow Entry & Check In'}
+              {isUpdating ? 'Updating Database...' : 'Allow Entry & Stamp Time In'}
             </button>
           )}
 
@@ -170,7 +202,7 @@ export default function VisitorVerificationPage() {
               disabled={isUpdating}
               className="mt-4 rounded-xl bg-slate-900 px-6 py-4 text-lg font-black text-white shadow-xl active:scale-95 transition-all disabled:opacity-60 border border-slate-700"
             >
-              {isUpdating ? 'Updating Database...' : 'Visitor Exiting (Check Out)'}
+              {isUpdating ? 'Updating Database...' : 'Visitor Exiting (Stamp Time Out)'}
             </button>
           )}
         </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
-import { visitorService } from '../../services/visitorService'; // NEW: Real Firebase Service
+import { visitorService } from '../../services/visitorService'; 
 import { DataTable } from '../../components/tables/DataTable';
 import { SearchFilterBar } from '../../components/tables/SearchFilterBar';
 import { StatusBadge } from '../../components/common/StatusBadge';
@@ -22,7 +22,6 @@ export default function VisitorApprovalsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   
-  // UPDATED: Fetch real data from Firestore
   const { data: realVisits, isLoading } = useAsyncData(() => visitorService.getAllVisits(), []);
   
   const [visits, setVisits] = useState([]);
@@ -33,7 +32,6 @@ export default function VisitorApprovalsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debouncedSearch = useDebouncedValue(search);
 
-  // Populate visits state purely from real Firebase data
   useEffect(() => {
     if (realVisits) {
       setVisits([...realVisits]);
@@ -53,7 +51,6 @@ export default function VisitorApprovalsPage() {
       .sort((a, b) => new Date(b.requestedDate) - new Date(a.requestedDate));
   }, [visits, debouncedSearch, status]);
 
-  // Handle real Firebase writes
   async function handleDecision(decision) {
     if (!selected) return;
     setIsSubmitting(true);
@@ -66,7 +63,6 @@ export default function VisitorApprovalsPage() {
         reviewNotes: notes || null,
       };
 
-      // Real database update
       await visitorService.updateVisitStatus(selected.id, updatePayload);
       
       setVisits((current) => current.map((v) => (v.id === selected.id ? { ...v, ...updatePayload } : v)));
@@ -83,6 +79,16 @@ export default function VisitorApprovalsPage() {
       setIsSubmitting(false);
     }
   }
+
+  // THE FIX: Formatting helper for the time logs
+  const formatTime = (isoString) => {
+    if (!isoString) return null;
+    return new Date(isoString).toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit', 
+      hour12: true 
+    });
+  };
 
   const columns = [
     { key: 'visitorName', header: 'Visitor', sortable: true },
@@ -135,6 +141,14 @@ export default function VisitorApprovalsPage() {
               <Row label="Plate Number" value={selected.plateNumber} />
               <Row label="Vehicle Type" value={selected.vehicleType} />
               <Row label="Visit Date" value={selected.visitDate} />
+              
+              {/* THE FIX: Visually display the timestamps to the Admin */}
+              {selected.checkInTime && (
+                <Row label="Time In" value={formatTime(selected.checkInTime)} />
+              )}
+              {selected.checkOutTime && (
+                <Row label="Time Out" value={formatTime(selected.checkOutTime)} />
+              )}
             </dl>
 
             {['pending'].includes(selected.status) ? (

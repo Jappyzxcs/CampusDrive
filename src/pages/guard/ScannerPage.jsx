@@ -14,7 +14,6 @@ export default function ScannerPage() {
   const [phase, setPhase] = useState('idle'); 
   const [result, setResult] = useState(null);
   
-  // THE FIX: Track the guard's selected mode for UI and a Ref for the scanner loop
   const [scanTargetUI, setScanTargetUI] = useState('Student');
   const scanTargetRef = useRef('Student');
   
@@ -22,8 +21,6 @@ export default function ScannerPage() {
   const isScanningRef = useRef(false);
   const workerRef = useRef(null);
   const vehiclesCacheRef = useRef([]);
-
-  
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
@@ -135,19 +132,34 @@ export default function ScannerPage() {
       }
 
       const vehicles = vehiclesCacheRef.current;
-      const currentTarget = scanTargetRef.current; // Grab the live Ref value
+      const currentTarget = scanTargetRef.current;
 
-      // THE FIX: Enforce the Guard's toggle selection before checking serial numbers
       const matchedVehicle = vehicles.find(v => {
         if (!v.stickerSerial) return false;
-        
         const vType = v.registrantType || 'Student'; 
         if (vType.toLowerCase() !== currentTarget.toLowerCase()) return false;
-        
         return levenshtein.get(cleanedText, v.stickerSerial.toUpperCase()) <= 2;
       });
 
       let finalResult;
+      
+      // Real-time Expiration Check
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); 
+      
+      let isOrExpired = false;
+      let isLicenseExpired = false;
+      
+      if (matchedVehicle) {
+        if (matchedVehicle.orExpiry) {
+          const orDate = new Date(matchedVehicle.orExpiry);
+          if (orDate < today) isOrExpired = true;
+        }
+        if (matchedVehicle.licenseExpiry) {
+          const licDate = new Date(matchedVehicle.licenseExpiry);
+          if (licDate < today) isLicenseExpired = true;
+        }
+      }
       
       if (!matchedVehicle) {
         finalResult = { 
@@ -171,7 +183,12 @@ export default function ScannerPage() {
           vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || null,
           alert: 'Access Denied: Sticker Revoked' 
         };
-      } else if (matchedVehicle.accreditationStatus === 'Expired') {
+      } else if (matchedVehicle.accreditationStatus === 'Expired' || matchedVehicle.status === 'expired' || isOrExpired || isLicenseExpired) {
+        
+        let expireReason = 'Institutional accreditation expired.';
+        if (isOrExpired) expireReason = 'LTO Official Receipt has expired. Entry denied.';
+        else if (isLicenseExpired) expireReason = 'Driver\'s License has expired. Entry denied.';
+
         finalResult = { 
           id: matchedVehicle.id,
           status: 'expired', 
@@ -179,7 +196,10 @@ export default function ScannerPage() {
           owner: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
-          alert: 'Institutional accreditation expired.' 
+          alert: expireReason,
+          // THE FIX: Pass dates even on expired so the Guard sees exactly when it expired
+          orExpiry: matchedVehicle.orExpiry || null,
+          licenseExpiry: matchedVehicle.licenseExpiry || null,
         };
       } else {
         const issued = matchedVehicle.dateIssued || null;
@@ -200,7 +220,10 @@ export default function ScannerPage() {
           vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null, 
           dateIssued: issued,
           validUntil: valid,
-          alert: 'Vehicle Authorized.' 
+          alert: 'Vehicle Authorized.',
+          // THE FIX: Pass dates to valid results to display on screen
+          orExpiry: matchedVehicle.orExpiry || null,
+          licenseExpiry: matchedVehicle.licenseExpiry || null,
         };
       }
 
@@ -210,7 +233,7 @@ export default function ScannerPage() {
           serial: finalResult.serial,
           result: finalResult.status,
           owner: finalResult.owner || 'Unknown',
-          guardName: user?.fullName || user?.name || 'On-Duty Guard', // THE FIX: Saves the Guard's Name!
+          guardName: user?.fullName || user?.name || 'On-Duty Guard',
           timestamp: new Date().toISOString()
         });
       } catch (dbErr) {
@@ -254,6 +277,12 @@ export default function ScannerPage() {
     setResult(null);
   }
 
+  // Quick helper to format dates purely for the UI
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return 'Not Provided';
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
   return (
     <div className="mx-auto flex max-h-screen w-full max-w-lg flex-col bg-slate-900 pb-6 font-sans">
       
@@ -270,7 +299,6 @@ export default function ScannerPage() {
       {phase !== 'result' && (
         <div className="flex flex-1 flex-col px-4 pb-4">
           
-          {/* THE FIX: Guard Toggle UI */}
           <div className="flex rounded-xl bg-slate-800 p-1 mb-4 shadow-inner">
             <button
               onClick={() => handleTargetSwitch('Student')}
@@ -333,7 +361,7 @@ export default function ScannerPage() {
       )}
 
       {phase === 'result' && result && (
-        <div className="flex flex-1 flex-col px-4 pb-4 animate-in fade-in zoom-in-95 duration-200">
+        <div className="flex flex-1 flex-col px-4 pb-4 animate-in fade-in zoom-in-95 duration-200 overflow-y-auto">
           <div className={`flex flex-1 flex-col items-center justify-center rounded-[2rem] p-6 text-center shadow-2xl border-4 ${
             result.status === 'valid' ? 'bg-emerald-600 border-emerald-400' : 'bg-red-600 border-red-400'
           }`}>
@@ -379,9 +407,27 @@ export default function ScannerPage() {
               
               {(result.dateIssued && result.validUntil) && (
                 <ResultRow 
-                  label="Validity" 
-                  value={`${new Date(result.dateIssued).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })} → ${new Date(result.validUntil).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' })}`} 
+                  label="Sticker Validity" 
+                  value={`${formatDisplayDate(result.dateIssued)} → ${formatDisplayDate(result.validUntil)}`} 
                 />
+              )}
+
+              {/* THE FIX: Added OR and License fields directly below the Sticker Validity */}
+              {(result.orExpiry || result.licenseExpiry) && (
+                <div className="mt-4 pt-4 border-t border-slate-100">
+                  <div className="mb-2 flex items-center gap-2">
+                    <Icon name="file-text" className="h-4 w-4 text-slate-400" />
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Document Expirations</span>
+                  </div>
+                  <ResultRow 
+                    label="OR Expiry" 
+                    value={formatDisplayDate(result.orExpiry)} 
+                  />
+                  <ResultRow 
+                    label="License Expiry" 
+                    value={formatDisplayDate(result.licenseExpiry)} 
+                  />
+                </div>
               )}
 
               {result.vehicleImage && (
@@ -400,7 +446,7 @@ export default function ScannerPage() {
 
           <button 
             onClick={handleReset} 
-            className="mt-6 w-full rounded-2xl bg-white py-5 text-xl font-bold text-slate-900 shadow-xl active:bg-slate-200 transition-colors"
+            className="mt-6 w-full rounded-2xl bg-white py-5 text-xl font-bold text-slate-900 shadow-xl active:bg-slate-200 transition-colors shrink-0"
           >
             Scan Next Vehicle
           </button>
@@ -415,7 +461,7 @@ function ResultRow({ label, value, highlight, status }) {
     <div className="flex items-center justify-between border-b border-slate-200 py-3.5 last:border-0">
       <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">{label}</span>
       <span className={`text-base font-bold text-slate-900 ${
-        highlight ? `text-2xl tracking-wide ${status === 'valid' ? '!text-emerald-700' : '!text-red-700'}` : ''
+        highlight ? `text-2xl tracking-wide \${status === 'valid' ? '!text-emerald-700' : '!text-red-700'}` : ''
       }`}>
         {value}
       </span>
