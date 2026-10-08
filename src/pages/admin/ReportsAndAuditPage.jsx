@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAsyncData } from '../../hooks/useAsyncData';
 import { reportService } from '../../services/reportService'; 
-import { DashboardCard } from '../../components/cards/DashboardCard';
-import { StatCard } from '../../components/cards/StatCard';
-import { CardSkeleton, Skeleton } from '../../components/common/LoadingSkeleton';
 import { DataTable } from '../../components/tables/DataTable';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../constants/roles';
@@ -13,6 +10,36 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { flaggingService } from '../../services/flaggingService';
 import { useToast } from '../../context/ToastContext';
+import { CardSkeleton, Skeleton } from '../../components/common/LoadingSkeleton';
+import { Icon } from '../../components/common/Icon';
+
+// ----------------------------------------------------------------------
+// Custom Metric Card Component (Matching Dashboard UI)
+// ----------------------------------------------------------------------
+function DashboardMetricCard({ title, value, icon, tone }) {
+  const tones = {
+    primary: 'bg-blue-50 text-blue-500',
+    secondary: 'bg-amber-50 text-amber-500',
+    accent: 'bg-emerald-50 text-emerald-500',
+    danger: 'bg-rose-50 text-rose-500'
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4">
+        {title}
+      </span>
+      <div className="flex justify-between items-center mt-2">
+        <h2 className="text-4xl font-extrabold font-sans text-slate-900 tracking-tight">
+          {value}
+        </h2>
+        <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${tones[tone] || tones.primary}`}>
+          <Icon name={icon} className="w-6 h-6" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ReportsAndAuditPage() {
   const { role } = useAuth();
@@ -122,7 +149,6 @@ export default function ReportsAndAuditPage() {
     }
   }, [activeTab, userMap]); 
 
-  // 🎨 REDESIGNED AUDIT TABLE COLUMNS
   const auditColumns = [
     { 
       key: 'timestamp', 
@@ -130,9 +156,9 @@ export default function ReportsAndAuditPage() {
       render: (row) => {
         const d = new Date(row.timestamp);
         return (
-          <div className="flex flex-col">
-            <span className="text-sm font-bold text-slate-800">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-            <span className="text-xs font-medium text-slate-500">{d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-bold text-slate-900">{d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+            <span className="text-[11px] font-bold tracking-wide text-slate-500 uppercase">{d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
           </div>
         );
       },
@@ -142,7 +168,7 @@ export default function ReportsAndAuditPage() {
       key: 'actor', 
       header: 'Performed By', 
       render: (row) => (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-sm">
+        <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200 shadow-sm">
           {row.actor}
         </span>
       ),
@@ -151,37 +177,36 @@ export default function ReportsAndAuditPage() {
     { 
       key: 'action', 
       header: 'Action Taken',
-      render: (row) => <span className="text-sm font-semibold text-slate-700 capitalize">{row.action}</span>
+      render: (row) => <span className="text-[13px] font-bold text-slate-800 capitalize">{row.action}</span>
     },
     { 
       key: 'target', 
       header: 'Target / Details',
-      render: (row) => <span className="text-sm text-slate-600">{row.target}</span>
+      render: (row) => <span className="text-[13px] font-medium text-slate-600">{row.target}</span>
     },
     { 
       key: 'result', 
       header: 'Outcome', 
       render: (row) => {
-        // Custom Styled Badges specifically for the Audit Trail
-        let badgeClass = "bg-slate-50 text-slate-700 border-slate-200";
+        let badgeClass = "bg-slate-100 text-slate-700 border-slate-200";
         let label = row.result;
         
         if (row.result === 'approved') { 
-          badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200"; 
+          badgeClass = "bg-emerald-100 text-emerald-700 border-emerald-200"; 
           label = "Approved"; 
         } else if (row.result === 'active') { 
-          badgeClass = "bg-blue-50 text-blue-700 border-blue-200"; 
+          badgeClass = "bg-blue-100 text-blue-700 border-blue-200"; 
           label = "Issued"; 
         } else if (row.result === 'rejected') { 
-          badgeClass = "bg-danger-50 text-danger-700 border-danger-200"; 
+          badgeClass = "bg-rose-100 text-rose-700 border-rose-200"; 
           label = row.action.includes('Revoked') ? "Revoked" : "Rejected"; 
         } else if (row.result === 'warning') { 
-          badgeClass = "bg-amber-50 text-amber-700 border-amber-200"; 
+          badgeClass = "bg-amber-100 text-amber-700 border-amber-200"; 
           label = "Flagged"; 
         }
         
         return (
-          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] uppercase tracking-widest font-bold border shadow-sm ${badgeClass}`}>
+          <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-[11px] uppercase tracking-widest font-bold border shadow-sm ${badgeClass}`}>
             {label}
           </span>
         );
@@ -255,97 +280,130 @@ export default function ReportsAndAuditPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-primary-900">Reports & Hub</h2>
-          <p className="text-sm text-slate-500">Analytics, security flags, and administrative audit trails.</p>
+    <div className="flex w-full flex-col gap-8 font-sans text-slate-800 pb-10">
+      
+      {/* Header Section */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-end justify-between border-b border-slate-200 pb-6">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
+            Reports & Hub
+          </h1>
+          <p className="text-base text-slate-500 font-medium">
+            Analytics, security flags, and administrative audit trails.
+          </p>
         </div>
         
-        <div className="flex flex-wrap rounded-lg bg-slate-100 p-1 shadow-inner">
-          <button onClick={() => setActiveTab('reports')} className={`rounded-md px-5 py-2 text-sm font-semibold transition-all ${activeTab === 'reports' ? 'bg-white text-primary-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Analytics</button>
-          <button onClick={() => setActiveTab('flagged')} className={`rounded-md px-5 py-2 text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'flagged' ? 'bg-white text-primary-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+        {/* Segmented Control Tabs */}
+        <div className="flex p-1 bg-slate-100 rounded-xl shadow-inner max-w-full overflow-x-auto">
+          <button 
+            onClick={() => setActiveTab('reports')} 
+            className={`flex-1 min-w-[120px] rounded-lg px-6 py-2.5 text-sm font-bold transition-all ${activeTab === 'reports' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Analytics
+          </button>
+          <button 
+            onClick={() => setActiveTab('flagged')} 
+            className={`flex-1 min-w-[150px] rounded-lg px-6 py-2.5 text-sm font-bold transition-all flex items-center justify-center gap-2 ${activeTab === 'flagged' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'}`}
+          >
             Flagged Vehicles
             {flaggedVehicles.length > 0 && activeTab !== 'flagged' && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-danger-500 text-[10px] text-white">{flaggedVehicles.length}</span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white shadow-sm">{flaggedVehicles.length}</span>
             )}
           </button>
-          <button onClick={() => setActiveTab('audit')} className={`rounded-md px-5 py-2 text-sm font-semibold transition-all ${activeTab === 'audit' ? 'bg-white text-primary-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Audit Trail</button>
+          <button 
+            onClick={() => setActiveTab('audit')} 
+            className={`flex-1 min-w-[120px] rounded-lg px-6 py-2.5 text-sm font-bold transition-all ${activeTab === 'audit' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'}`}
+          >
+            Audit Trail
+          </button>
         </div>
       </div>
 
+      {/* TAB CONTENT: REPORTS */}
       {activeTab === 'reports' && (
-        <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            {reportsLoading ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />) : (
+        <div className="flex flex-col gap-8 animate-in fade-in duration-300">
+          
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {reportsLoading ? Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} className="h-32 rounded-2xl" />) : (
               <>
-                <StatCard label="Total Applications" value={(reports?.applicationsSummary?.approved || 0) + (reports?.applicationsSummary?.rejected || 0) + (reports?.applicationsSummary?.pending || 0)} icon="clipboard" />
-                <StatCard label="Approved" value={reports?.applicationsSummary?.approved || 0} icon="check" tone="accent" />
-                <StatCard label="Rejected" value={reports?.applicationsSummary?.rejected || 0} icon="alert" tone="danger" />
-                <StatCard label="Pending Review" value={reports?.applicationsSummary?.pending || 0} icon="time" tone="secondary" />
+                {/* Changed to "car" (Guaranteed to work) */}
+                <DashboardMetricCard label="Total Processed" title="Total Applications" value={(reports?.applicationsSummary?.approved || 0) + (reports?.applicationsSummary?.rejected || 0) + (reports?.applicationsSummary?.pending || 0)} icon="car" tone="primary" />
+                
+                <DashboardMetricCard title="Approved" value={reports?.applicationsSummary?.approved || 0} icon="check" tone="accent" />
+                <DashboardMetricCard title="Rejected" value={reports?.applicationsSummary?.rejected || 0} icon="alert" tone="danger" />
+                
+                {/* Changed to "clipboard" (Guaranteed to work) */}
+                <DashboardMetricCard title="Pending Review" value={reports?.applicationsSummary?.pending || 0} icon="clipboard" tone="secondary" />
               </>
             )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <DashboardCard title="Application Processing Overview">
+            
+            {/* Overview Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex flex-col hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-extrabold text-slate-900 font-sans tracking-tight mb-6">Application Processing Overview</h3>
               {reportsLoading ? (
-                <Skeleton className="h-48 w-full" />
+                <Skeleton className="h-48 w-full rounded-xl" />
               ) : (
-                <div className="flex flex-col gap-3 py-2">
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-sm font-semibold text-slate-600">Total Processed (This Month)</span>
-                    <span className="text-2xl font-bold text-slate-900">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-sm font-bold text-slate-600">Total Processed (This Month)</span>
+                    <span className="text-2xl font-black text-slate-900 tracking-tight">
                       {(reports?.applicationsSummary?.approved || 0) + (reports?.applicationsSummary?.rejected || 0)}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-accent-50 rounded-xl border border-accent-100">
-                    <span className="text-sm font-semibold text-accent-900">Approval Rate</span>
-                    <span className="text-2xl font-bold text-accent-700">
+                  <div className="flex items-center justify-between p-5 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <span className="text-sm font-bold text-emerald-900">Approval Rate</span>
+                    <span className="text-2xl font-black text-emerald-700 tracking-tight">
                       {reports?.applicationsSummary?.approved > 0 
                         ? Math.round(((reports?.applicationsSummary?.approved) / ((reports?.applicationsSummary?.approved) + (reports?.applicationsSummary?.rejected))) * 100) 
                         : 0}%
                     </span>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-secondary-50 rounded-xl border border-secondary-100">
-                    <span className="text-sm font-semibold text-secondary-900">Current Queue Workload</span>
-                    <span className="text-xl font-bold text-secondary-800">{reports?.applicationsSummary?.pending || 0} Pending</span>
+                  <div className="flex items-center justify-between p-5 bg-amber-50 rounded-xl border border-amber-100">
+                    <span className="text-sm font-bold text-amber-900">Current Queue Workload</span>
+                    <span className="text-xl font-black text-amber-700 tracking-tight">{reports?.applicationsSummary?.pending || 0} Pending</span>
                   </div>
                 </div>
               )}
-            </DashboardCard>
+            </div>
 
-            <DashboardCard title="Security & System Health">
+            {/* Health Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex flex-col hover:shadow-md transition-shadow">
+              <h3 className="text-lg font-extrabold text-slate-900 font-sans tracking-tight mb-6">Security & System Health</h3>
               {reportsLoading ? (
-                <Skeleton className="h-48 w-full" />
+                <Skeleton className="h-48 w-full rounded-xl" />
               ) : (
-                <div className="flex flex-col gap-3 py-2">
-                  <div className="flex items-center justify-between p-4 bg-danger-50 rounded-xl border border-danger-100">
-                    <span className="text-sm font-semibold text-danger-900">Flagged Vehicles</span>
-                    <span className="text-2xl font-bold text-danger-700">{flaggedVehicles.length}</span>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between p-5 bg-rose-50 rounded-xl border border-rose-100">
+                    <span className="text-sm font-bold text-rose-900">Flagged Vehicles</span>
+                    <span className="text-2xl font-black text-rose-700 tracking-tight">{flaggedVehicles.length}</span>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <span className="text-sm font-semibold text-slate-600">Total Audit Events Recorded</span>
-                    <span className="text-xl font-bold text-slate-800">{auditEntries.length} Tracked</span>
+                  <div className="flex items-center justify-between p-5 bg-slate-50 rounded-xl border border-slate-100">
+                    <span className="text-sm font-bold text-slate-600">Total Audit Events</span>
+                    <span className="text-xl font-black text-slate-800 tracking-tight">{auditEntries.length} Tracked</span>
                   </div>
-                  <div className="flex items-center justify-between p-4 bg-emerald-50 rounded-xl border border-emerald-100">
-                    <span className="text-sm font-semibold text-emerald-900">System Connection</span>
-                    <span className="text-xs font-bold uppercase tracking-wide bg-emerald-600 text-white px-3 py-1.5 rounded-lg shadow-sm">Live Firestore</span>
+                  <div className="flex items-center justify-between p-5 bg-emerald-50 rounded-xl border border-emerald-100">
+                    <span className="text-sm font-bold text-emerald-900">System Connection</span>
+                    <span className="text-[11px] font-bold uppercase tracking-widest bg-emerald-600 text-white px-3 py-1.5 rounded-full shadow-sm">Live Firestore</span>
                   </div>
                 </div>
               )}
-            </DashboardCard>
+            </div>
+
           </div>
         </div>
       )}
 
+      {/* TAB CONTENT: FLAGGED VEHICLES */}
       {activeTab === 'flagged' && (
-        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="flex flex-col gap-6 animate-in fade-in duration-300">
           {flagsLoading ? (
-            <div className="flex flex-col gap-3"><CardSkeleton /><CardSkeleton /></div>
+            <div className="flex flex-col gap-4"><CardSkeleton className="rounded-2xl h-32" /><CardSkeleton className="rounded-2xl h-32" /></div>
           ) : flaggedVehicles.length === 0 ? (
-            <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-12 text-center text-slate-500">
-              No vehicles are currently flagged in the system.
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-16 text-center">
+              <p className="text-lg font-bold text-slate-500">No vehicles are currently flagged in the system.</p>
             </div>
           ) : (
             flaggedVehicles.map(vehicle => {
@@ -354,28 +412,42 @@ export default function ReportsAndAuditPage() {
               const isPendingRevocation = vehicle.offenseCount >= 3 && !isRevoked;
 
               return (
-                <DashboardCard key={vehicle.id} className={isRevoked ? 'bg-red-50/30 border-danger-200' : ''}>
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div key={vehicle.id} className={`bg-white rounded-2xl border shadow-sm p-6 sm:p-8 transition-shadow hover:shadow-md ${isRevoked ? 'bg-rose-50/30 border-rose-200' : 'border-slate-200'}`}>
+                  <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-lg font-bold text-slate-900">{vehicle.plateNumber}</h3>
-                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold shadow-sm ${isRevoked ? 'bg-danger-600 text-white' : isPendingRevocation ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
+                      <div className="flex items-center gap-4 mb-1">
+                        <h3 className="text-2xl font-black text-slate-900 tracking-tight">{vehicle.plateNumber}</h3>
+                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-widest uppercase shadow-sm ${isRevoked ? 'bg-rose-600 text-white' : isPendingRevocation ? 'bg-orange-100 text-orange-700 border border-orange-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
                           {isRevoked ? 'REVOKED' : `${vehicle.offenseCount} / 3 Offenses`}
                         </span>
                       </div>
-                      <p className="text-sm text-slate-500 mt-1">{vehicle.ownerName} &middot; Serial: <span className="font-semibold text-slate-700">{vehicle.stickerSerial}</span></p>
+                      <p className="text-sm font-medium text-slate-500 flex items-center gap-2">
+                        {vehicle.ownerName} <span className="text-slate-300">•</span> Serial: <span className="font-bold text-slate-700">{vehicle.stickerSerial}</span>
+                      </p>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={() => setExpandedId(expandedId === vehicle.id ? null : vehicle.id)} className="btn-secondary py-2">
+                    
+                    <div className="flex flex-wrap gap-3">
+                      <button 
+                        onClick={() => setExpandedId(expandedId === vehicle.id ? null : vehicle.id)} 
+                        className="px-6 py-2.5 rounded-xl bg-slate-100 text-slate-700 text-sm font-bold tracking-wide hover:bg-slate-200 transition-all border border-slate-200"
+                      >
                         {expandedId === vehicle.id ? 'Hide History' : 'View History'}
                       </button>
+                      
                       {isPendingRevocation && (
-                        <button onClick={() => handleRevoke(vehicle)} className="btn-primary bg-danger-600 hover:bg-danger-700 py-2 shadow-md">
+                        <button 
+                          onClick={() => handleRevoke(vehicle)} 
+                          className="px-6 py-2.5 rounded-xl bg-rose-600 text-white text-sm font-bold tracking-wide hover:bg-rose-700 transition-all shadow-sm hover:shadow-md"
+                        >
                           Revoke Sticker
                         </button>
                       )}
+                      
                       {isRevoked && (
-                        <button onClick={() => handleUndoRevoke(vehicle)} className="btn-primary bg-amber-500 hover:bg-amber-600 py-2 shadow-md">
+                        <button 
+                          onClick={() => handleUndoRevoke(vehicle)} 
+                          className="px-6 py-2.5 rounded-xl bg-amber-500 text-white text-sm font-bold tracking-wide hover:bg-amber-600 transition-all shadow-sm hover:shadow-md"
+                        >
                           Undo Revoke (Test)
                         </button>
                       )}
@@ -383,55 +455,62 @@ export default function ReportsAndAuditPage() {
                   </div>
 
                   {expandedId === vehicle.id && (
-                    <div className="mt-5 border-t border-slate-200 pt-5 flex flex-col gap-3">
-                      <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400">Offense History</h4>
+                    <div className="mt-8 border-t border-slate-100 pt-6 flex flex-col gap-4">
+                      <h4 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Offense History</h4>
+                      
                       {isRevoked && vehicle.revokeReason && (
-                        <div className="bg-danger-100/50 border border-danger-200 p-4 rounded-xl text-sm text-danger-900 mb-2 shadow-inner">
-                          <span className="font-bold uppercase tracking-wider text-[10px] block mb-1 text-danger-600">Revocation Reason</span>
+                        <div className="bg-rose-50 border border-rose-200 p-5 rounded-xl text-sm mb-2 shadow-inner">
+                          <span className="font-bold uppercase tracking-widest text-[10px] block mb-2 text-rose-600">Revocation Reason</span>
                           {vehicle.revokeReason.includes('. Last violation:') ? (
                             <>
-                              <span className="font-bold text-base">{vehicle.revokeReason.split('. Last violation:')[0]}</span><br/>
-                              <span className="text-danger-700 mt-1.5 inline-block">
-                                <span className="font-semibold">Last violation:</span> {vehicle.revokeReason.split('. Last violation:')[1]?.trim()}
+                              <span className="font-extrabold text-slate-900 text-base">{vehicle.revokeReason.split('. Last violation:')[0]}</span><br/>
+                              <span className="text-rose-700 mt-2 inline-block font-medium">
+                                <span className="font-bold text-rose-800">Last violation:</span> {vehicle.revokeReason.split('. Last violation:')[1]?.trim()}
                               </span>
                             </>
                           ) : (
-                            vehicle.revokeReason
+                            <span className="font-bold text-slate-900 text-base">{vehicle.revokeReason}</span>
                           )}
                         </div>
                       )}
-                      {offenses.length === 0 ? <p className="text-sm text-slate-400 italic">No individual logs found.</p> : (
-                        <ul className="flex flex-col gap-3">
+                      
+                      {offenses.length === 0 ? <p className="text-sm font-medium text-slate-500 italic p-4 bg-slate-50 rounded-xl border border-slate-100">No individual logs found.</p> : (
+                        <div className="flex flex-col gap-4">
                           {offenses.map((offense, idx) => (
-                            <li key={offense.id} className="rounded-xl bg-white p-4 text-sm border border-slate-200 shadow-sm">
-                              <div className="flex justify-between items-start mb-2">
-                                <span className="font-bold text-danger-700 text-base">Strike {idx + 1}: {offense.reason}</span>
-                                <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-md">{new Date(offense.timestamp).toLocaleDateString()}</span>
+                            <div key={offense.id} className="rounded-xl bg-white p-5 border border-slate-200 shadow-sm relative overflow-hidden">
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400"></div>
+                              <div className="flex justify-between items-start mb-3">
+                                <span className="font-extrabold text-slate-900 text-base">Strike {idx + 1}: {offense.reason}</span>
+                                <span className="text-[11px] font-bold tracking-wider text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full uppercase">{new Date(offense.timestamp).toLocaleDateString()}</span>
                               </div>
-                              {offense.details && <p className="text-slate-600 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">"{offense.details}"</p>}
+                              {offense.details && <p className="text-sm font-medium text-slate-600 mt-2 bg-slate-50 p-4 rounded-xl border border-slate-100">"{offense.details}"</p>}
                               
-                              <p className="text-xs font-medium text-slate-400 mt-3 flex items-center gap-1.5">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                                Reported by: {userMap[offense.guardId] || 'Security Officer'}
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-4 flex items-center gap-2">
+                                <Icon name="user" className="w-3.5 h-3.5" />
+                                Reported by: <span className="text-slate-600">{userMap[offense.guardId] || 'Security Officer'}</span>
                               </p>
-                            </li>
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       )}
                     </div>
                   )}
-                </DashboardCard>
+                </div>
               );
             })
           )}
         </div>
       )}
 
+      {/* TAB CONTENT: AUDIT TRAIL */}
       {activeTab === 'audit' && (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <DashboardCard title="Administrative Action Log">
+        <div className="animate-in fade-in duration-300">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-6 hover:shadow-md transition-shadow">
+            <div className="mb-6">
+              <h3 className="text-lg font-extrabold text-slate-900 font-sans tracking-tight">Administrative Action Log</h3>
+            </div>
             <DataTable columns={auditColumns} rows={auditEntries} isLoading={auditLoading} />
-          </DashboardCard>
+          </div>
         </div>
       )}
     </div>
