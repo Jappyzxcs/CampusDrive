@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
+import { getAuth, updateProfile } from 'firebase/auth';
 import { db } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/authService';
@@ -7,10 +8,12 @@ import { ROLE_LABELS } from '../../constants/roles';
 import { useToast } from '../../context/ToastContext';
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  // THE FIX: Pull in the new updateUserSession function
+  const { user, updateUserSession } = useAuth();
   const { showToast } = useToast();
   
-  const [name, setName] = useState(user?.name || '');
+  const currentDisplayName = user?.displayName || user?.fullName || user?.name || '';
+  const [name, setName] = useState(currentDisplayName);
   const [isSaving, setIsSaving] = useState(false);
 
   async function handleSubmit(event) {
@@ -19,10 +22,35 @@ export default function ProfilePage() {
     
     setIsSaving(true);
     try {
-      const userRef = doc(db, 'users', user.id);
-      await updateDoc(userRef, { name: name.trim() });
+      const auth = getAuth();
+      const uid = user?.id || user?.uid || auth.currentUser?.uid;
+      
+      // 1. Update Firebase Auth Profile
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { 
+          displayName: name.trim() 
+        });
+      }
+
+      // 2. Update Firestore Database
+      if (uid) {
+        const userRef = doc(db, 'users', uid);
+        await setDoc(userRef, { 
+          name: name.trim(),
+          fullName: name.trim(),
+          displayName: name.trim() 
+        }, { merge: true });
+      }
+      
+      // THE FIX 3: Instantly update the React Context and Session Storage
+      updateUserSession({
+        name: name.trim(),
+        fullName: name.trim(),
+        displayName: name.trim()
+      });
       
       showToast('Profile updated successfully.', { type: 'success' });
+      
     } catch (error) {
       console.error("Profile update error:", error);
       showToast('Failed to update profile.', { type: 'danger' });
@@ -32,7 +60,7 @@ export default function ProfilePage() {
   }
 
   async function handlePasswordReset() {
-    if (!confirm(`Send password reset email to ${user.email}?`)) return;
+    if (!confirm(`Send password reset email to ${user?.email}?`)) return;
     try {
       await authService.sendResetEmail(user.email);
       showToast('Password reset link sent to your email.', { type: 'success' });
@@ -41,7 +69,7 @@ export default function ProfilePage() {
     }
   }
 
-  const initials = (name || 'U')
+  const initials = (currentDisplayName || 'U')
     .split(' ')
     .map((p) => p[0])
     .slice(0, 2)
@@ -49,10 +77,8 @@ export default function ProfilePage() {
     .toUpperCase();
 
   return (
-    // Removed max-w-4xl. The layout will now stretch fully like the dashboard.
     <div className="flex w-full flex-col gap-6 font-sans text-slate-800 pb-10">
       
-      {/* Header Section */}
       <div className="flex flex-col gap-1 mb-2">
         <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
           Profile
@@ -62,17 +88,15 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {/* Main Profile Card - Now spans the full width of the content area */}
       <div className="bg-white w-full rounded-2xl border border-slate-200 shadow-sm p-8">
         
-        {/* User Info & Avatar Header */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-8">
           <div className="flex items-center gap-5">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 shadow-sm text-xl font-bold text-blue-600">
               {initials}
             </span>
             <div>
-              <p className="text-xl font-bold text-slate-900 tracking-tight">{user?.name || 'User'}</p>
+              <p className="text-xl font-bold text-slate-900 tracking-tight">{currentDisplayName || 'User'}</p>
               <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mt-0.5">
                 {ROLE_LABELS[user?.role] || 'Student'}
               </p>
@@ -88,7 +112,6 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Form Section - Constrained to max-w-3xl so fields aren't too stretched */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-3xl" noValidate>
           
           <div className="w-full">
@@ -150,7 +173,7 @@ export default function ProfilePage() {
           <div className="flex justify-start border-t border-slate-100 pt-6 mt-4">
             <button 
               type="submit" 
-              disabled={isSaving || name === user?.name}
+              disabled={isSaving || name === currentDisplayName}
               className="px-8 py-3 rounded-xl bg-blue-600 text-white font-bold tracking-wide hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow-md"
             >
               {isSaving ? 'Saving…' : 'Save Changes'}

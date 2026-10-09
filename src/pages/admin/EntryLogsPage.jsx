@@ -57,15 +57,27 @@ export default function EntryLogsPage() {
     { 
       key: 'entryType', 
       header: 'Entry Status', 
-      render: (row) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-          row.entryType === 'Visitor' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
-        }`}>
-          {row.entryType || 'Registered Vehicle'}
-        </span>
-      )
+      render: (row) => {
+        let label = row.entryType;
+        let colorClass = 'bg-blue-100 text-blue-800';
+
+        // THE FIX: Intercept unknown plates and unregistered results before they default to "Registered"
+        if (row.result === 'unregistered' || row.plateNumber === 'UNKNOWN' || !row.plateNumber) {
+           label = 'Unknown / Unregistered';
+           colorClass = 'bg-slate-100 text-slate-600';
+        } else if (label === 'Visitor') {
+           colorClass = 'bg-purple-100 text-purple-800';
+        } else {
+           label = label || 'Registered Vehicle';
+        }
+
+        return (
+          <span className={`px-2 py-1 rounded-md text-xs font-bold ${colorClass}`}>
+            {label}
+          </span>
+        );
+      }
     },
-    // THE FIX: Removed Gate, ensured Guard Name renders gracefully
     { 
       key: 'guardName', 
       header: 'Guard', 

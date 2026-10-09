@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useAsyncData } from '../../hooks/useAsyncData';
 import { notificationService } from '../../services/notificationService'; 
 import { EmptyState } from '../../components/common/EmptyState';
 import { Skeleton } from '../../components/common/LoadingSkeleton';
 import { Icon } from '../../components/common/Icon';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 const TYPE_STYLES = {
   info: { icon: 'bell', className: 'bg-blue-50 text-blue-500' },
@@ -14,6 +15,7 @@ const TYPE_STYLES = {
 };
 
 function timeAgo(timestamp) {
+  if (!timestamp) return 'Just now';
   const diffMs = Date.now() - new Date(timestamp).getTime();
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   if (days <= 0) return 'Today';
@@ -23,13 +25,28 @@ function timeAgo(timestamp) {
 
 export default function NotificationsPage() {
   const { user } = useAuth();
+  const [data, setData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
-  const { data, isLoading } = useAsyncData(
-    () => (user?.id ? notificationService.getUserNotifications(user?.id) : Promise.resolve([])), 
-    [user?.id]
-  );
-  
+  // Local state for optimistic UI rendering (instant visual feedback on click)
   const [readIds, setReadIds] = useState(new Set());
+
+  // THE FIX: Live Firebase listener replaces useAsyncData
+  useEffect(() => {
+    if (!user?.id && !user?.uid) return;
+    const uid = user.id || user.uid;
+
+    const q = query(collection(db, 'notifications'), where('userId', '==', uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notifs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      notifs.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+      
+      setData(notifs);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   async function handleMarkAsRead(id) {
     setReadIds((prev) => new Set(prev).add(id));
@@ -41,12 +58,10 @@ export default function NotificationsPage() {
   }
 
   return (
-    // Removed mx-auto, changed to max-w-4xl, letting it naturally left-align
     <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
       
       {/* Header Section */}
       <div className="flex flex-col gap-1 mb-2">
-        {/* Added font-sans to override the global serif font you were seeing */}
         <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
           Notifications
         </h1>
@@ -73,7 +88,6 @@ export default function NotificationsPage() {
             return (
               <div 
                 key={n.id} 
-                // Tightened padding to p-5 for a sleeker profile
                 className={`relative flex gap-4 rounded-2xl border border-slate-200 p-5 transition-all duration-200 ${
                   isRead 
                     ? 'bg-slate-50/50 shadow-none border-slate-100 opacity-75' 

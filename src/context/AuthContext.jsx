@@ -57,9 +57,18 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  // THE FIX: Correctly maps to your authService.sendResetEmail function
   const resetPassword = useCallback(async (email) => {
     return await authService.sendResetEmail(email);
+  }, []);
+
+  // THE FIX: Function to instantly sync local storage and React state
+  const updateUserSession = useCallback((updatedData) => {
+    setUser((prev) => {
+      if (!prev) return null;
+      const nextUser = { ...prev, ...updatedData };
+      window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextUser));
+      return nextUser;
+    });
   }, []);
 
   const value = useMemo(
@@ -71,9 +80,10 @@ export function AuthProvider({ children }) {
       login,
       register,
       logout,
-      resetPassword, // Exposed for all your login pages to use
+      resetPassword,
+      updateUserSession, // Exporting the new function
     }),
-    [user, isInitializing, login, register, logout, resetPassword],
+    [user, isInitializing, login, register, logout, resetPassword, updateUserSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

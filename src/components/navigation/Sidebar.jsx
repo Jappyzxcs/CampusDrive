@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Icon } from '../common/Icon';
 import { Seal } from '../common/Seal';
 import { NAV_CONFIG } from './navConfig';
 import { ROLE_LABELS } from '../../constants/roles';
 import { useAuth } from '../../context/AuthContext';
-import { useAsyncData } from '../../hooks/useAsyncData';
-import { notificationService } from '../../services/notificationService';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 
 export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
   const items = NAV_CONFIG[role] || [];
@@ -14,14 +14,24 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
   
   // Desktop collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
 
-  // Silently fetch the user's notifications in the background
-  const { data: notifications } = useAsyncData(
-    () => (user?.id ? notificationService.getUserNotifications(user.id) : Promise.resolve([])), 
-    [user?.id]
-  );
-  
-  const hasUnread = notifications?.some(n => !n.read);
+  // THE FIX: Live Firebase listener so the red dot vanishes instantly
+  useEffect(() => {
+    if (!user?.id && !user?.uid) return;
+    const uid = user.id || user.uid;
+
+    const q = query(collection(db, 'notifications'), where('userId', '==', uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let unread = false;
+      snapshot.forEach((doc) => {
+        if (!doc.data().read) unread = true;
+      });
+      setHasUnread(unread);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   return (
     <>
@@ -54,7 +64,6 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
             )}
           </div>
           
-          {/* THE FIX: Replaced Chevron Arrows with a Smooth Toggle Switch */}
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="hidden lg:flex items-center justify-center rounded-md p-1.5 text-primary-400 hover:bg-primary-800/60 hover:text-white transition-colors"
@@ -81,7 +90,7 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
                 <NavLink
                   to={item.to}
                   onClick={onClose}
-                  title={isCollapsed ? item.label : undefined} // Tooltip appears when collapsed
+                  title={isCollapsed ? item.label : undefined}
                   className={({ isActive }) =>
                     `group relative flex items-center rounded-r-md border-l-[3px] py-2.5 transition-colors ${
                       isCollapsed ? 'justify-center px-0' : 'gap-3 px-3'
@@ -115,7 +124,7 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
           </ul>
         </nav>
 
-        {/* Quick Info (Hidden when collapsed) */}
+        {/* Quick Info */}
         {quickInfo && !isCollapsed && (
           <div className="mx-3 mb-3 rounded-lg bg-primary-800/60 px-3 py-2.5">
             <p className="text-[10px] uppercase tracking-wide text-primary-400">

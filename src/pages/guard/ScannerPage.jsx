@@ -3,10 +3,11 @@ import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/common/Icon';
 import { createWorker } from 'tesseract.js';
 import levenshtein from 'fast-levenshtein';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore'; 
+import { collection, onSnapshot, addDoc, query, where, getDocs } from 'firebase/firestore'; 
 import { db } from '../../config/firebase'; 
 import { aiService } from '../../services/aiService';
 import { useAuth } from '../../context/AuthContext';
+import { flaggingService } from '../../services/flaggingService';
 
 export default function ScannerPage() {
   const { user } = useAuth();
@@ -21,6 +22,11 @@ export default function ScannerPage() {
   const isScanningRef = useRef(false);
   const workerRef = useRef(null);
   const vehiclesCacheRef = useRef([]);
+
+  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
+  const [flagReason, setFlagReason] = useState('');
+  const [flagDetails, setFlagDetails] = useState('');
+  const [isFlagging, setIsFlagging] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
@@ -87,6 +93,16 @@ export default function ScannerPage() {
     return null; 
   };
 
+  // THE FIX: Safely parse DD/MM/YYYY format so the math works perfectly
+  const parseCustomDate = (dateStr) => {
+    if (!dateStr) return null;
+    if (dateStr.includes('/')) {
+      const [day, month, year] = dateStr.split('/');
+      return new Date(year, parseInt(month) - 1, day);
+    }
+    return new Date(dateStr);
+  };
+
   const processFrame = async () => {
     if (!isScanningRef.current || !videoRef.current) return;
 
@@ -143,7 +159,6 @@ export default function ScannerPage() {
 
       let finalResult;
       
-      // Real-time Expiration Check
       const today = new Date();
       today.setHours(0, 0, 0, 0); 
       
@@ -152,25 +167,43 @@ export default function ScannerPage() {
       
       if (matchedVehicle) {
         if (matchedVehicle.orExpiry) {
-          const orDate = new Date(matchedVehicle.orExpiry);
-          if (orDate < today) isOrExpired = true;
+          // THE FIX: Use the custom date parser
+          const orDate = parseCustomDate(matchedVehicle.orExpiry);
+          if (orDate && orDate < today) isOrExpired = true;
         }
         if (matchedVehicle.licenseExpiry) {
-          const licDate = new Date(matchedVehicle.licenseExpiry);
-          if (licDate < today) isLicenseExpired = true;
+          // THE FIX: Use the custom date parser
+          const licDate = parseCustomDate(matchedVehicle.licenseExpiry);
+          if (licDate && licDate < today) isLicenseExpired = true;
         }
       }
       
       if (!matchedVehicle) {
-        finalResult = { 
-          id: null,
-          status: 'unregistered', 
-          plateNumber: 'UNKNOWN', 
-          owner: 'N/A', 
-          make: 'N/A', 
-          serial: cleanedText, 
-          alert: `No ${currentTarget} record found for this sticker.` 
-        };
+        const pendingQuery = query(collection(db, 'vehicles'), where('stickerSerial', '==', cleanedText));
+        const pendingSnap = await getDocs(pendingQuery);
+        
+        if (!pendingSnap.empty) {
+          const pendingVehicle = pendingSnap.docs[0].data();
+          finalResult = { 
+            id: pendingSnap.docs[0].id,
+            status: 'unregistered', 
+            plateNumber: pendingVehicle.plateNumber || 'UNKNOWN', 
+            owner: `${pendingVehicle.ownerName || 'Unknown'} (${pendingVehicle.registrantType || 'Student'})`, 
+            make: `${pendingVehicle.make || ''} ${pendingVehicle.model || ''}`.trim() || 'N/A', 
+            serial: cleanedText, 
+            alert: `Sticker found, but vehicle application is still PENDING. Entry denied.` 
+          };
+        } else {
+          finalResult = { 
+            id: null,
+            status: 'no_record', 
+            plateNumber: 'UNKNOWN', 
+            owner: 'N/A', 
+            make: 'N/A', 
+            serial: cleanedText, 
+            alert: `No record found for this sticker. Possible counterfeit.` 
+          };
+        }
       } else if (matchedVehicle.accreditationStatus === 'Revoked' || matchedVehicle.status === 'revoked') {
         finalResult = { 
           id: matchedVehicle.id,
@@ -197,7 +230,6 @@ export default function ScannerPage() {
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
           alert: expireReason,
-          // THE FIX: Pass dates even on expired so the Guard sees exactly when it expired
           orExpiry: matchedVehicle.orExpiry || null,
           licenseExpiry: matchedVehicle.licenseExpiry || null,
         };
@@ -221,7 +253,6 @@ export default function ScannerPage() {
           dateIssued: issued,
           validUntil: valid,
           alert: 'Vehicle Authorized.',
-          // THE FIX: Pass dates to valid results to display on screen
           orExpiry: matchedVehicle.orExpiry || null,
           licenseExpiry: matchedVehicle.licenseExpiry || null,
         };
@@ -254,6 +285,53 @@ export default function ScannerPage() {
     }
   };
 
+  async function handleFlagSubmit() {
+    if (!flagReason) return;
+    setIsFlagging(true);
+    
+    try {
+      if (!result.id) {
+        await addDoc(collection(db, 'reports'), {
+          type: 'vehicle_violation',
+          plateNumber: result.plateNumber,
+          serial: result.serial,
+          reportedBy: user?.fullName || user?.name || 'On-Duty Guard',
+          reason: flagReason,
+          details: flagDetails,
+          status: 'open',
+          timestamp: new Date().toISOString()
+        });
+        showToast('Violation reported for unregistered sticker.', { type: 'success' });
+      } else {
+        const guardId = user?.id || user?.uid || 'Guard';
+        const newCount = await flaggingService.submitFlag(
+          result.id, 
+          result.serial, 
+          guardId, 
+          flagReason, 
+          flagDetails
+        );
+        
+        if (newCount >= 3) {
+          showToast(`Vehicle Auto-Revoked! (Strike ${newCount} of 3)`, { type: 'danger' });
+        } else {
+          showToast(`Offense recorded. Vehicle now has ${newCount} strike(s).`, { type: 'warning' });
+        }
+      }
+      
+      setIsFlagModalOpen(false);
+      setFlagReason('');
+      setFlagDetails('');
+      handleReset(); 
+      
+    } catch (err) {
+      console.error("Flag Error:", err);
+      showToast("Failed to submit flag.", { type: 'danger' });
+    } finally {
+      setIsFlagging(false);
+    }
+  }
+
   function handleTargetSwitch(target) {
     scanTargetRef.current = target;
     setScanTargetUI(target);
@@ -277,10 +355,11 @@ export default function ScannerPage() {
     setResult(null);
   }
 
-  // Quick helper to format dates purely for the UI
   const formatDisplayDate = (dateStr) => {
     if (!dateStr) return 'Not Provided';
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const d = parseCustomDate(dateStr);
+    if (!d || isNaN(d)) return dateStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -412,7 +491,6 @@ export default function ScannerPage() {
                 />
               )}
 
-              {/* THE FIX: Added OR and License fields directly below the Sticker Validity */}
               {(result.orExpiry || result.licenseExpiry) && (
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <div className="mb-2 flex items-center gap-2">
@@ -441,6 +519,15 @@ export default function ScannerPage() {
                 </div>
               )}
             </div>
+            
+            <button 
+              onClick={() => setIsFlagModalOpen(true)}
+              className={`mt-5 w-full rounded-xl border-2 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-all active:scale-95 shadow-sm ${
+                result.status === 'valid' ? 'border-emerald-500 bg-emerald-700/40 hover:bg-emerald-700' : 'border-red-500 bg-red-700/40 hover:bg-red-700'
+              }`}
+            >
+              Flag / Report Vehicle Offense
+            </button>
 
           </div>
 
@@ -450,6 +537,81 @@ export default function ScannerPage() {
           >
             Scan Next Vehicle
           </button>
+        </div>
+      )}
+
+      {isFlagModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900 font-serif">Report Vehicle Offense</h3>
+              <button onClick={() => setIsFlagModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <Icon name="x" className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="mb-6 flex flex-col gap-3">
+              <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-all ${flagReason === 'Sticker Swapping' ? 'border-primary-500 bg-primary-50' : 'border-slate-200'}`}>
+                <div className="mt-0.5">
+                  <input 
+                    type="radio" 
+                    name="violation" 
+                    value="Sticker Swapping" 
+                    checked={flagReason === 'Sticker Swapping'} 
+                    onChange={(e) => { setFlagReason(e.target.value); setFlagDetails(''); }} 
+                    className="h-4 w-4 text-primary-600" 
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-bold text-slate-900">Sticker Swapping</span>
+                  <span className="mt-1 text-xs font-medium text-slate-500 leading-relaxed">The scanned sticker is attached to a vehicle that does not match the registered proof photo.</span>
+                </div>
+              </label>
+
+              <label className={`flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-all ${flagReason === 'Other Violation' ? 'border-primary-500 bg-primary-50' : 'border-slate-200'}`}>
+                <input 
+                  type="radio" 
+                  name="violation" 
+                  value="Other Violation" 
+                  checked={flagReason === 'Other Violation'} 
+                  onChange={(e) => setFlagReason(e.target.value)} 
+                  className="h-4 w-4 text-primary-600" 
+                />
+                <span className="text-sm font-bold text-slate-900">Other Violation</span>
+              </label>
+
+              {flagReason === 'Other Violation' && (
+                <div className="mt-2 animate-in fade-in slide-in-from-top-2">
+                  <textarea 
+                    rows={3}
+                    value={flagDetails}
+                    onChange={(e) => setFlagDetails(e.target.value)}
+                    placeholder="Please specify the violation..."
+                    className="w-full rounded-lg border border-slate-300 p-3 text-sm text-slate-900 focus:border-red-500 focus:outline-none shadow-inner"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-center gap-4">
+              <button 
+                onClick={() => setIsFlagModalOpen(false)}
+                disabled={isFlagging}
+                className="w-1/2 rounded-lg border border-primary-200 bg-white py-3 text-sm font-bold text-primary-700 hover:bg-primary-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleFlagSubmit}
+                disabled={isFlagging || !flagReason}
+                className="w-1/2 rounded-lg bg-[#7A1B1B] py-3 text-sm font-bold text-white shadow-md hover:bg-[#5E1515] disabled:opacity-50 transition-colors"
+              >
+                Submit Report
+              </button>
+            </div>
+            
+          </div>
         </div>
       )}
     </div>
