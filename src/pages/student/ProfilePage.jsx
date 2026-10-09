@@ -8,7 +8,6 @@ import { ROLE_LABELS } from '../../constants/roles';
 import { useToast } from '../../context/ToastContext';
 
 export default function ProfilePage() {
-  // THE FIX: Pull in the new updateUserSession function
   const { user, updateUserSession } = useAuth();
   const { showToast } = useToast();
   
@@ -42,7 +41,7 @@ export default function ProfilePage() {
         }, { merge: true });
       }
       
-      // THE FIX 3: Instantly update the React Context and Session Storage
+      // 3. Instantly update the React Context and Session Storage
       updateUserSession({
         name: name.trim(),
         fullName: name.trim(),
@@ -77,9 +76,10 @@ export default function ProfilePage() {
     .toUpperCase();
 
   return (
-    <div className="flex w-full flex-col gap-6 font-sans text-slate-800 pb-10">
+    <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
       
-      <div className="flex flex-col gap-1 mb-2">
+      {/* Header Section */}
+      <div className="flex flex-col gap-1 mb-2 border-b border-slate-200 pb-6">
         <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
           Profile
         </h1>
@@ -88,16 +88,17 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      <div className="bg-white w-full rounded-2xl border border-slate-200 shadow-sm p-8">
+      <div className="bg-white w-full rounded-2xl border border-slate-200 shadow-sm p-8 hover:shadow-md transition-shadow">
         
+        {/* User Avatar & Header */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-8">
           <div className="flex items-center gap-5">
-            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 shadow-sm text-xl font-bold text-blue-600">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 shadow-sm text-xl font-black text-blue-600 border border-blue-100">
               {initials}
             </span>
             <div>
-              <p className="text-xl font-bold text-slate-900 tracking-tight">{currentDisplayName || 'User'}</p>
-              <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mt-0.5">
+              <p className="text-xl font-extrabold text-slate-900 tracking-tight">{currentDisplayName || 'User'}</p>
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-1">
                 {ROLE_LABELS[user?.role] || 'Student'}
               </p>
             </div>
@@ -106,16 +107,17 @@ export default function ProfilePage() {
           <button
             type="button"
             onClick={handlePasswordReset}
-            className="inline-flex items-center px-4 py-2 rounded-xl text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all"
+            className="inline-flex items-center px-5 py-2.5 rounded-xl text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 transition-all shadow-sm"
           >
             Reset Password
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6 max-w-3xl" noValidate>
+        {/* Profile Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
           
           <div className="w-full">
-            <label htmlFor="name" className="block text-sm font-bold text-slate-700 mb-2">
+            <label htmlFor="name" className="block text-sm font-bold text-slate-800 mb-2">
               Full Name
             </label>
             <input
@@ -125,13 +127,13 @@ export default function ProfilePage() {
               onChange={(e) => setName(e.target.value)}
               required
               disabled={isSaving}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60 disabled:bg-slate-50"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60 disabled:bg-slate-50"
             />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
             <div>
-              <label htmlFor="institutionalId" className="block text-sm font-bold text-slate-700 mb-2">
+              <label htmlFor="institutionalId" className="block text-sm font-bold text-slate-800 mb-2">
                 Student / Employee ID
               </label>
               <input
@@ -139,12 +141,12 @@ export default function ProfilePage() {
                 id="institutionalId"
                 value={user?.institutionalId || 'N/A'}
                 disabled
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 cursor-not-allowed"
               />
             </div>
             
             <div>
-              <label htmlFor="college" className="block text-sm font-bold text-slate-700 mb-2">
+              <label htmlFor="college" className="block text-sm font-bold text-slate-800 mb-2">
                 College / Department
               </label>
               <input
@@ -152,13 +154,13 @@ export default function ProfilePage() {
                 id="college"
                 value={user?.college || 'N/A'}
                 disabled
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 cursor-not-allowed"
               />
             </div>
           </div>
 
           <div className="w-full">
-            <label htmlFor="email" className="block text-sm font-bold text-slate-700 mb-2">
+            <label htmlFor="email" className="block text-sm font-bold text-slate-800 mb-2">
               Institutional Email
             </label>
             <input
@@ -166,7 +168,7 @@ export default function ProfilePage() {
               id="email"
               value={user?.email || ''}
               disabled
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 cursor-not-allowed"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500 cursor-not-allowed"
             />
           </div>
 

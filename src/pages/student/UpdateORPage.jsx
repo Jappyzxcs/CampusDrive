@@ -4,7 +4,6 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
-import { DashboardCard } from '../../components/cards/DashboardCard';
 import { TextField } from '../../components/forms/TextField';
 import { Icon } from '../../components/common/Icon';
 import Tesseract from 'tesseract.js';
@@ -39,13 +38,13 @@ function extractAllDates(rawText) {
     const day = parseInt(tm[2], 10), year = parseInt(tm[3], 10);
     if (month && day >= 1 && day <= 31) found.push({ year, month, day, formatted: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`, iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` });
   }
-  const ymdRegex = /(?:^|[^\d])(20\d{2}|19\d{2})[\s/.\-:I\\]+(\d{1,2})[\s/.\-:I\\]+(\d{1,2})(?=[^\d]|\$)/g;
+  const ymdRegex = /(?:^|[^\d])(20\d{2}|19\d{2})[\s/.\-:I\\]+(\d{1,2})[\s/.\-:I\\]+(\d{1,2})(?=[^\d]|$)/g;
   let m;
   while ((m = ymdRegex.exec(text)) !== null) {
     const year = parseInt(m[1], 10), month = parseInt(m[2], 10), day = parseInt(m[3], 10);
     if (month >= 1 && month <= 12 && day >= 1 && day <= 31) found.push({ year, month, day, formatted: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`, iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` });
   }
-  const dmyRegex = /(?:^|[^\d])(\d{1,2})[\s/.\-:I\\]+(\d{1,2})[\s/.\-:I\\]+(20\d{2}|19\d{2})(?=[^\d]|\$)/g;
+  const dmyRegex = /(?:^|[^\d])(\d{1,2})[\s/.\-:I\\]+(\d{1,2})[\s/.\-:I\\]+(20\d{2}|19\d{2})(?=[^\d]|$)/g;
   while ((m = dmyRegex.exec(text)) !== null) {
     const p1 = parseInt(m[1], 10), p2 = parseInt(m[2], 10), year = parseInt(m[3], 10);
     let day = p1, month = p2;
@@ -75,8 +74,9 @@ function extractOrExpiry(text) {
   return null;
 }
 
+// FIXED: Removed the escaped backslash so it checks for standard DD/MM/YYYY format
 function parseDMY(str) {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})\$/.exec((str || '').trim());
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((str || '').trim());
   if (!m) return null;
   const d = new Date(+m[3], +m[2] - 1, +m[1]);
   return d.getMonth() === +m[2] - 1 ? d : null;
@@ -366,11 +366,11 @@ function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
     ctx.fillRect(0, ry, rx, rh);
     ctx.fillRect(rx + rw, ry, stage.width - (rx + rw), rh);
 
-    ctx.strokeStyle = '#F5C400';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#2563EB';
+    ctx.lineWidth = 3;
     ctx.strokeRect(rx, ry, rw, rh);
 
-    ctx.fillStyle = '#0B0E8C';
+    ctx.fillStyle = '#1D4ED8';
     [[rx, ry], [rx + rw, ry], [rx, ry + rh], [rx + rw, ry + rh]].forEach(([cx, cy]) => {
       ctx.fillRect(cx - HANDLE_SIZE / 2, cy - HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE);
     });
@@ -437,32 +437,32 @@ function DocumentCropModal({ sourceCanvas, docLabel, onConfirm, onCancel }) {
   function handlePointerUp() { dragRef.current = null; }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full p-5 flex flex-col gap-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full p-8 flex flex-col gap-6">
         <div>
-          <h3 className="text-base font-bold text-slate-900">Adjust {docLabel}</h3>
-          <p className="text-sm text-slate-500">Drag the corners to fit just the document, then straighten it if needed.</p>
+          <h3 className="text-xl font-extrabold text-slate-900 mb-1">Adjust {docLabel}</h3>
+          <p className="text-sm font-medium text-slate-500">Drag the corners to fit just the document, then straighten it if needed.</p>
         </div>
-        <div className="flex justify-center bg-slate-100 rounded-lg p-2 overflow-hidden">
+        <div className="flex justify-center bg-slate-100 border border-slate-200 rounded-xl p-4 overflow-hidden shadow-inner">
           <canvas
-            ref={stageRef} className="cursor-move rounded" style={{ touchAction: 'none' }}
+            ref={stageRef} className="cursor-move rounded shadow-md" style={{ touchAction: 'none' }}
             onMouseDown={handlePointerDown} onMouseMove={handlePointerMove} onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
             onTouchStart={handlePointerDown} onTouchMove={handlePointerMove} onTouchEnd={handlePointerUp}
           />
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => setQuickRotation((r) => (r + 270) % 360)} className="btn-secondary text-xs px-3 py-1.5">Rotate Left</button>
-          <button type="button" onClick={() => setQuickRotation((r) => (r + 90) % 360)} className="btn-secondary text-xs px-3 py-1.5">Rotate Right</button>
-          <button type="button" onClick={() => setRect(autoDetectCardBounds(workingCanvas))} className="btn-secondary text-xs px-3 py-1.5">Auto-Detect Edges</button>
-          <button type="button" onClick={() => setRect({ x: 0, y: 0, width: workingCanvas.width, height: workingCanvas.height })} className="btn-secondary text-xs px-3 py-1.5">Reset to Full Image</button>
-          <div className="flex items-center gap-2 ml-auto">
-            <label className="text-xs text-slate-500">Straighten</label>
-            <input type="range" min={-15} max={15} step={0.5} value={fineRotation} onChange={(e) => setFineRotation(parseFloat(e.target.value))} className="w-32" />
+          <button type="button" onClick={() => setQuickRotation((r) => (r + 270) % 360)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors border border-slate-200">Rotate Left</button>
+          <button type="button" onClick={() => setQuickRotation((r) => (r + 90) % 360)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors border border-slate-200">Rotate Right</button>
+          <button type="button" onClick={() => setRect(autoDetectCardBounds(workingCanvas))} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors border border-slate-200">Auto-Detect</button>
+          <button type="button" onClick={() => setRect({ x: 0, y: 0, width: workingCanvas.width, height: workingCanvas.height })} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-colors border border-slate-200">Reset</button>
+          <div className="flex items-center gap-3 ml-auto bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">Straighten</label>
+            <input type="range" min={-15} max={15} step={0.5} value={fineRotation} onChange={(e) => setFineRotation(parseFloat(e.target.value))} className="w-24 accent-blue-600" />
           </div>
         </div>
-        <div className="flex justify-end gap-3 border-t border-slate-100 pt-4">
-          <button type="button" onClick={onCancel} className="btn-secondary">Cancel</button>
-          <button type="button" onClick={() => onConfirm(cropCanvas(workingCanvas, rect))} className="btn-primary">Use This Crop</button>
+        <div className="flex justify-end gap-4 border-t border-slate-100 pt-6">
+          <button type="button" onClick={onCancel} className="px-6 py-2.5 rounded-xl text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 font-bold transition-all">Cancel</button>
+          <button type="button" onClick={() => onConfirm(cropCanvas(workingCanvas, rect))} className="px-8 py-2.5 rounded-xl bg-blue-600 text-white font-bold tracking-wide hover:bg-blue-700 transition-all shadow-sm">Use This Crop</button>
         </div>
       </div>
     </div>
@@ -612,52 +612,55 @@ export default function UpdateORPage() {
     }
   }
 
-  if (!vehicle) return <div className="p-8 text-center text-slate-500">Loading vehicle data...</div>;
+  if (!vehicle) return <div className="p-8 text-center text-slate-500 font-medium">Loading vehicle data...</div>;
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-6 pb-12">
-      <div>
-        <h2 className="text-xl font-semibold text-primary-900">Renew Official Receipt</h2>
-        <p className="text-sm text-slate-500">Update the OR for plate <span className="font-bold text-slate-800">{vehicle.plateNumber || vehicle.vehicleDetails?.plateNumber}</span></p>
+    <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
+      
+      <div className="flex flex-col gap-1 mb-2 border-b border-slate-200 pb-6">
+        <h2 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">Renew Official Receipt</h2>
+        <p className="text-base text-slate-500 font-medium">Update the OR for plate <span className="font-bold text-slate-800">{vehicle.plateNumber || vehicle.vehicleDetails?.plateNumber}</span></p>
       </div>
 
-      <DashboardCard>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 hover:shadow-md transition-shadow">
         {phase === 'idle' || phase === 'extracting' ? (
-          <form onSubmit={handleExtract} className="flex flex-col gap-5">
-            <div className="bg-blue-50 text-blue-800 p-4 rounded-xl text-sm border border-blue-100">
+          <form onSubmit={handleExtract} className="flex flex-col gap-6">
+            <div className="bg-blue-50 text-blue-900 p-5 rounded-xl text-sm font-medium border border-blue-200 shadow-inner">
               Upload your newest LTO Official Receipt. You will be asked to crop it to just the receipt, then the AI cross-checks the plate number against your vehicle and reads the new expiration date.
             </div>
 
             <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium text-slate-700">Upload New OR (Image or PDF)</label>
+              <label className="text-sm font-bold text-slate-800">Upload New OR (Image or PDF)</label>
               <input 
                 type="file" 
                 accept="image/*,.pdf" 
                 onChange={(e) => handleFileSelect(e.target.files[0])}
-                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100"
+                className="block w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"
               />
-              {file && <p className="text-xs text-slate-500 truncate">Selected: {file.name}</p>}
+              {file && <p className="text-xs font-bold text-slate-400 mt-2 truncate uppercase tracking-widest">Selected: {file.name}</p>}
             </div>
 
-            <button 
-              type="submit" 
-              disabled={!file || phase === 'extracting'} 
-              className="btn-primary mt-2 flex justify-center items-center gap-2"
-            >
-              {phase === 'extracting' ? (
-                <>
-                  <Icon name="scan" className="animate-pulse" /> Extracting Date...
-                </>
-              ) : (
-                'Extract Date with AI'
-              )}
-            </button>
+            <div className="pt-4 border-t border-slate-100 mt-2">
+              <button 
+                type="submit" 
+                disabled={!file || phase === 'extracting'} 
+                className="w-full btn-primary py-3 flex justify-center items-center gap-2 rounded-xl text-sm font-bold tracking-wide"
+              >
+                {phase === 'extracting' ? (
+                  <>
+                    <Icon name="loader" className="animate-spin h-4 w-4" /> Extracting Date...
+                  </>
+                ) : (
+                  'Extract Date with AI'
+                )}
+              </button>
+            </div>
           </form>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-6 animate-in fade-in duration-300">
-            <div className="rounded-lg bg-primary-50 p-5 border border-primary-100">
-              <h3 className="text-sm font-bold text-primary-900 mb-2">Extracted Data (Locked)</h3>
-              <p className="text-xs text-primary-700 mb-4">Make sure the date matches the receipt exactly. If the AI misread it, please click Re-upload and use a clearer image.</p>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-8 animate-in fade-in duration-300">
+            <div className="rounded-xl bg-slate-50 p-6 border border-slate-200 shadow-inner">
+              <h3 className="text-sm font-extrabold text-slate-900 mb-2 uppercase tracking-wide">Extracted Data (Locked)</h3>
+              <p className="text-sm font-medium text-slate-500 mb-6 leading-relaxed">Make sure the date matches the receipt exactly. If the AI misread it, please click Re-upload and use a clearer image.</p>
               
               <TextField 
                 id="orExpiry" 
@@ -669,17 +672,17 @@ export default function UpdateORPage() {
               />
             </div>
 
-            <div className="flex justify-between gap-3">
-              <button type="button" onClick={() => setPhase('idle')} className="btn-secondary" disabled={phase === 'submitting'}>
+            <div className="flex justify-between gap-4 border-t border-slate-100 pt-6">
+              <button type="button" onClick={() => setPhase('idle')} className="px-6 py-2.5 rounded-xl text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 font-bold transition-all" disabled={phase === 'submitting'}>
                 Re-upload Image
               </button>
-              <button type="submit" className="btn-primary" disabled={phase === 'submitting' || getExpiryStatus(extractedExpiry) === 'expired'}>
+              <button type="submit" className="px-8 py-3 rounded-xl bg-blue-600 text-white font-bold tracking-wide hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm" disabled={phase === 'submitting' || getExpiryStatus(extractedExpiry) === 'expired'}>
                 {phase === 'submitting' ? 'Saving Update...' : 'Confirm & Renew'}
               </button>
             </div>
           </form>
         )}
-      </DashboardCard>
+      </div>
 
       {cropTarget && (
         <DocumentCropModal
