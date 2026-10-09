@@ -7,6 +7,7 @@ import { DashboardCard } from '../../components/cards/DashboardCard';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
 import { applicationService } from '../../services/applicationService';
+import { settingsService } from '../../services/settingsService'; 
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'; 
 import { db } from '../../config/firebase'; 
 import Tesseract from 'tesseract.js';
@@ -228,7 +229,7 @@ function expiryMessage(status, isGuess) {
 }
 
 /* =========================================================================
-   COMPUTER VISION PROCESSORS
+   COMPUTER VISION PROCESSORS (UPDATED WITH CONFIDENCE SCORE EXTRACTION)
    ========================================================================= */
 
 const grayscaleCanvas = (source) => {
@@ -319,7 +320,10 @@ const ocrBothPasses = async (sourceCanvas, psm = TESS_PSM.AUTO) => {
     Tesseract.recognize(gray.toDataURL('image/png'), 'eng', options),
     Tesseract.recognize(binarized.toDataURL('image/png'), 'eng', options),
   ]);
-  return `${r1.data.text}\n${r2.data.text}`;
+  return {
+    text: `${r1.data.text}\n${r2.data.text}`,
+    confidence: (r1.data.confidence + r2.data.confidence) / 2
+  };
 };
 
 const ocrAlnumPass = async (sourceCanvas, psm = TESS_PSM.SPARSE_TEXT) => {
@@ -328,35 +332,14 @@ const ocrAlnumPass = async (sourceCanvas, psm = TESS_PSM.SPARSE_TEXT) => {
     tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/:,.',
     tessedit_pageseg_mode: psm,
   });
-  return result.data.text;
-};
-
-const extractPdfTextLayer = async (pdfDoc) => {
-  let text = '';
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    text += '\n' + content.items.map((it) => it.str).join(' ');
-  }
-  return text;
-};
-
-const pdfHasEmbeddedImage = async (pdfDoc) => {
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const opList = await page.getOperatorList();
-    const hasImage = opList.fnArray.some((fn) =>
-      fn === pdfjsLib.OPS.paintImageXObject ||
-      fn === pdfjsLib.OPS.paintImageXObjectRepeat ||
-      fn === pdfjsLib.OPS.paintJpegXObject
-    );
-    if (hasImage) return true;
-  }
-  return false;
+  return {
+    text: result.data.text,
+    confidence: result.data.confidence
+  };
 };
 
 /* =========================================================================
-   CROP / ROTATE / AUTO-DETECT HELPERS
+   CROP / ROTATE / AUTO-DETECT HELPERS (RESTORED)
    ========================================================================= */
 
 const rotateCanvas = (source, degrees) => {
@@ -466,9 +449,39 @@ const autoDetectCardBounds = (canvas) => {
   };
 };
 
+/* =========================================================================
+   PDF & FILE PROCESSORS
+   ========================================================================= */
+
+const extractPdfTextLayer = async (pdfDoc) => {
+  let text = '';
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const content = await page.getTextContent();
+    text += '\n' + content.items.map((it) => it.str).join(' ');
+  }
+  return text;
+};
+
+const pdfHasEmbeddedImage = async (pdfDoc) => {
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const opList = await page.getOperatorList();
+    const hasImage = opList.fnArray.some((fn) =>
+      fn === pdfjsLib.OPS.paintImageXObject ||
+      fn === pdfjsLib.OPS.paintImageXObjectRepeat ||
+      fn === pdfjsLib.OPS.paintJpegXObject
+    );
+    if (hasImage) return true;
+  }
+  return false;
+};
+
 const ocrPdf = async (pdfDoc) => {
   let text = '';
   let alnumText = '';
+  let totalConf = 0;
+  let passes = 0;
   for (let i = 1; i <= pdfDoc.numPages; i++) {
     const page = await pdfDoc.getPage(i);
     const viewport = page.getViewport({ scale: 3.2 });
@@ -481,10 +494,12 @@ const ocrPdf = async (pdfDoc) => {
     await page.render({ canvasContext: context, viewport }).promise;
 
     const [normal, alnum] = await Promise.all([ocrBothPasses(canvas), ocrAlnumPass(canvas)]);
-    text += '\n' + normal;
-    alnumText += '\n' + alnum;
+    text += '\n' + normal.text;
+    alnumText += '\n' + alnum.text;
+    totalConf += normal.confidence + alnum.confidence;
+    passes += 2;
   }
-  return { text, alnumText };
+  return { text, alnumText, confidence: passes > 0 ? totalConf / passes : 100 };
 };
 
 const renderFileToCanvas = async (file) => {
@@ -519,7 +534,7 @@ const renderFileToCanvas = async (file) => {
 };
 
 const processFile = async (file) => {
-  if (!file) return { text: '', alnumText: '' };
+  if (!file) return { text: '', alnumText: '', confidence: 100 };
   
   if (file.type === 'application/pdf') {
     const arrayBuffer = await file.arrayBuffer();
@@ -528,11 +543,11 @@ const processFile = async (file) => {
     const hasEmbeddedImage = await pdfHasEmbeddedImage(pdfDoc);
 
     if (layerText.length > 120 && !hasEmbeddedImage) {
-      return { text: layerText, alnumText: '' };
+      return { text: layerText, alnumText: '', confidence: 100 }; 
     }
-    const { text: ocrText, alnumText } = await ocrPdf(pdfDoc);
+    const { text: ocrText, alnumText, confidence } = await ocrPdf(pdfDoc);
     const combinedText = cleanText(`${layerText}\n${ocrText}`);
-    return { text: combinedText, alnumText: cleanText(alnumText) };
+    return { text: combinedText, alnumText: cleanText(alnumText), confidence };
   }
 
   const canvas = document.createElement('canvas');
@@ -550,8 +565,12 @@ const processFile = async (file) => {
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  const [text, alnumText] = await Promise.all([ocrBothPasses(canvas), ocrAlnumPass(canvas)]);
-  return { text: cleanText(text), alnumText: cleanText(alnumText) };
+  const [normalRes, alnumRes] = await Promise.all([ocrBothPasses(canvas), ocrAlnumPass(canvas)]);
+  return { 
+    text: cleanText(normalRes.text), 
+    alnumText: cleanText(alnumRes.text),
+    confidence: (normalRes.confidence + alnumRes.confidence) / 2
+  };
 };
 
 /* =========================================================================
@@ -612,7 +631,6 @@ export default function VehicleRegistrationPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isCheckingPlate, setIsCheckingPlate] = useState(false); 
   
-  // THE FIX: Case-insensitive role check
   const defaultRegistrantType = user?.role?.toLowerCase() === 'faculty' ? 'Faculty' : 'Student';
   
   const [form, setForm] = useState({
@@ -628,7 +646,8 @@ export default function VehicleRegistrationPage() {
 
   const [extractedData, setExtractedData] = useState({
     licenseName: '', crName: '', color: '', licenseExpiry: '', orExpiry: '',
-    rawLicenseExpiry: '', rawOrExpiry: '', licenseExpiryGuess: false, orExpiryGuess: false
+    rawLicenseExpiry: '', rawOrExpiry: '', licenseExpiryGuess: false, orExpiryGuess: false,
+    ocrConfidence: 0
   });
   const [nameMatchResult, setNameMatchResult] = useState(true);
 
@@ -804,6 +823,8 @@ export default function VehicleRegistrationPage() {
         processFile(docs.or)
       ]);
 
+      const avgOcrConfidence = Math.round((licenseRes.confidence + crRes.confidence + orRes.confidence) / 3);
+
       const licenseText = `${licenseRes.text}\n${licenseRes.alnumText}`;
       const crText = `${crRes.text}\n${crRes.alnumText}`;
       const orText = `${orRes.text}\n${orRes.alnumText}`;
@@ -829,13 +850,14 @@ export default function VehicleRegistrationPage() {
         rawLicenseExpiry: licenseExpiry, 
         rawOrExpiry: orExpiry,
         licenseExpiryGuess: !!licExp && !licExp.confident,
-        orExpiryGuess: !!orExp && !orExp.confident
+        orExpiryGuess: !!orExp && !orExp.confident,
+        ocrConfidence: avgOcrConfidence
       });
       setNameMatchResult(isMatch);
       
       setCurrentStep(3);
       window.scrollTo(0, 0);
-      showToast('Documents processed! Please review extracted data.', { type: 'success' });
+      showToast(`Documents processed with ${avgOcrConfidence}% AI confidence.`, { type: 'success' });
 
     } catch (error) {
       console.error('OCR Extraction failed:', error);
@@ -863,15 +885,25 @@ export default function VehicleRegistrationPage() {
     const accountName = user?.fullName || user?.name || '';
     const matchesAccountName = namesMatch(accountName, extractedData.licenseName) || namesMatch(accountName, extractedData.crName);
     
-    if (!matchesAccountName && !docs.authLetter && !docs.deedOfSale && !docs.companyCert) {
-      showToast('Document names do not match your account name. You MUST upload an Authorization Letter, Deed of Sale, or Company Certificate below.', { type: 'danger' });
-      return; 
+    let initialStatus = 'pending';
+
+    if (!matchesAccountName) {
+      if (!docs.authLetter && !docs.deedOfSale && !docs.companyCert) {
+        showToast('Document names do not match your account name. You MUST upload an Authorization Letter, Deed of Sale, or Company Certificate below.', { type: 'danger' });
+        return; 
+      }
+      initialStatus = 'under_review';
     }
 
     setIsSubmitting(true);
-    showToast('Compressing and saving documents... Please wait.', { type: 'info' });
+    showToast('Validating settings and saving documents... Please wait.', { type: 'info' });
     
     try {
+      const adminSettings = await settingsService.getSettings();
+      if (adminSettings.requireManualReviewBelowConfidence && extractedData.ocrConfidence < adminSettings.ocrConfidenceThreshold) {
+        initialStatus = 'under_review'; 
+      }
+
       const [vehiclePhotoUrl, licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
         ultraCompressFile(vehiclePhotos[0] || null), 
         ultraCompressFile(docs.license || null),
@@ -897,10 +929,10 @@ export default function VehicleRegistrationPage() {
       const applicationData = {
         applicantName: `${form.firstName} ${form.lastName}`.trim(),
         type: form.registrantType === 'Student' ? 'New Registration - Student' : 'New Registration - Faculty',
-        // THE FIX: Explicitly save registrantType directly on the root of the document
         registrantType: form.registrantType,
         submittedDate: new Date().toISOString().split('T')[0], 
-        status: 'pending',
+        status: initialStatus, 
+        confidenceScore: extractedData.ocrConfidence, 
         vehicleDetails: { ...form },
         nlpExtractedData: { ...extractedData },
         nlpNamesMatched: nameMatchResult,
@@ -910,23 +942,19 @@ export default function VehicleRegistrationPage() {
       };
 
       const cleanApplicationData = JSON.parse(JSON.stringify(applicationData));
-
       await applicationService.createApplication(cleanApplicationData);
 
-      showToast('Registration submitted for admin review.', { type: 'success' });
+      showToast(`Registration submitted. Status: ${initialStatus === 'under_review' ? 'Manual Review' : 'Pending Verification'}.`, { type: 'success' });
       navigate(ROUTES.STUDENT_APPLICATION_STATUS);
       
     } catch (error) {
       console.error("Submission failed:", error);
-      
       let exactError = error.message || "Unknown error";
-      
       if (exactError.toLowerCase().includes("permission") || exactError.toLowerCase().includes("missing")) {
         exactError = "FIREBASE RULES: You need to allow 'write' access in your Firestore Rules.";
       } else if (exactError.toLowerCase().includes("exhausted") || exactError.toLowerCase().includes("exceeds") || exactError.toLowerCase().includes("payload")) {
         exactError = "1MB LIMIT EXCEEDED: The images are too large for Firestore. We need to use Firebase Storage.";
       }
-      
       showToast(`Failed: ${exactError}`, { type: 'danger' });
     } finally {
       setIsSubmitting(false);
@@ -972,56 +1000,55 @@ export default function VehicleRegistrationPage() {
               <TextField id="address" label="Full Address" required value={form.address} error={errors.address} onChange={(e) => update('address', e.target.value)} />
 
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                {/* THE FIX: Removed disabled={true} to allow the user to select Student/Faculty manually */}
                 <SelectField id="registrantType" label="Registrant Type" required options={REGISTRANT_TYPES} value={form.registrantType} error={errors.registrantType} onChange={(e) => update('registrantType', e.target.value)} />
                 <SelectField id="vehicleType" label="Vehicle Type" required options={VEHICLE_TYPES} value={form.vehicleType} error={errors.vehicleType} onChange={(e) => update('vehicleType', e.target.value)} />
               </div>
 
               <hr className="border-slate-100" />
 
-<div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-  {form.registrantType === 'Student' && (
-    <>
-      <TextField 
-        id="studentId" 
-        label="Student ID" 
-        required 
-        value={form.studentId} 
-        error={errors.studentId} 
-        onChange={(e) => update('studentId', e.target.value)} 
-      />
-      <TextField 
-        id="yearAndSection" 
-        label="Year and Section" 
-        placeholder="e.g. BSIT 4A" 
-        required 
-        value={form.yearAndSection} 
-        error={errors.yearAndSection} 
-        onChange={(e) => update('yearAndSection', e.target.value)} 
-      />
-    </>
-  )}
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                {form.registrantType === 'Student' && (
+                  <>
+                    <TextField 
+                      id="studentId" 
+                      label="Student ID" 
+                      required 
+                      value={form.studentId} 
+                      error={errors.studentId} 
+                      onChange={(e) => update('studentId', e.target.value)} 
+                    />
+                    <TextField 
+                      id="yearAndSection" 
+                      label="Year and Section" 
+                      placeholder="e.g. BSIT 4A" 
+                      required 
+                      value={form.yearAndSection} 
+                      error={errors.yearAndSection} 
+                      onChange={(e) => update('yearAndSection', e.target.value)} 
+                    />
+                  </>
+                )}
 
-  {form.registrantType === 'Faculty' && (
-    <TextField 
-      id="employeeId" 
-      label="Employee ID" 
-      required 
-      value={form.employeeId} 
-      error={errors.employeeId} 
-      onChange={(e) => update('employeeId', e.target.value)} 
-    />
-  )}
+                {form.registrantType === 'Faculty' && (
+                  <TextField 
+                    id="employeeId" 
+                    label="Employee ID" 
+                    required 
+                    value={form.employeeId} 
+                    error={errors.employeeId} 
+                    onChange={(e) => update('employeeId', e.target.value)} 
+                  />
+                )}
 
-  <TextField 
-    id="plateNumber" 
-    label="License Plate Number" 
-    required 
-    value={form.plateNumber} 
-    error={errors.plateNumber} 
-    onChange={(e) => update('plateNumber', e.target.value)} 
-  />
-</div>
+                <TextField 
+                  id="plateNumber" 
+                  label="License Plate Number" 
+                  required 
+                  value={form.plateNumber} 
+                  error={errors.plateNumber} 
+                  onChange={(e) => update('plateNumber', e.target.value)} 
+                />
+              </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-slate-700">

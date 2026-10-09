@@ -8,10 +8,10 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
 const TYPE_STYLES = {
-  info: { icon: 'bell', className: 'bg-blue-50 text-blue-500' },
-  success: { icon: 'check', className: 'bg-emerald-50 text-emerald-500' },
-  warning: { icon: 'alert-triangle', className: 'bg-amber-50 text-amber-500' },
-  danger: { icon: 'alert-circle', className: 'bg-rose-50 text-rose-500' },
+  info: { icon: 'bell', className: 'bg-blue-50 text-blue-500 border border-blue-100' },
+  success: { icon: 'check', className: 'bg-emerald-50 text-emerald-500 border border-emerald-100' },
+  warning: { icon: 'alert-triangle', className: 'bg-amber-50 text-amber-500 border border-amber-100' },
+  danger: { icon: 'alert-circle', className: 'bg-rose-50 text-rose-500 border border-rose-100' },
 };
 
 function timeAgo(timestamp) {
@@ -27,11 +27,8 @@ export default function NotificationsPage() {
   const { user } = useAuth();
   const [data, setData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Local state for optimistic UI rendering (instant visual feedback on click)
   const [readIds, setReadIds] = useState(new Set());
 
-  // THE FIX: Live Firebase listener replaces useAsyncData
   useEffect(() => {
     if (!user?.id && !user?.uid) return;
     const uid = user.id || user.uid;
@@ -53,15 +50,14 @@ export default function NotificationsPage() {
     try {
       await notificationService.markAsRead(id);
     } catch (error) {
-      console.error("Failed to mark notification as read in Firebase:", error);
+      console.error("Failed to mark notification as read:", error);
     }
   }
 
   return (
     <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
       
-      {/* Header Section */}
-      <div className="flex flex-col gap-1 mb-2">
+      <div className="flex flex-col gap-1 mb-2 border-b border-slate-200 pb-6">
         <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
           Notifications
         </h1>
@@ -72,11 +68,11 @@ export default function NotificationsPage() {
 
       {isLoading ? (
         <div className="flex flex-col gap-4">
-          <Skeleton className="h-20 w-full rounded-2xl" />
-          <Skeleton className="h-20 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-2xl" />
         </div>
       ) : !data || data.length === 0 ? (
-        <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-10 text-center">
+        <div className="rounded-2xl bg-slate-50 border border-dashed border-slate-300 p-16 text-center">
           <EmptyState title="You're all caught up" description="No notifications right now." />
         </div>
       ) : (
@@ -88,43 +84,39 @@ export default function NotificationsPage() {
             return (
               <div 
                 key={n.id} 
-                className={`relative flex gap-4 rounded-2xl border border-slate-200 p-5 transition-all duration-200 ${
+                className={`relative flex gap-5 rounded-2xl p-6 transition-all duration-200 ${
                   isRead 
-                    ? 'bg-slate-50/50 shadow-none border-slate-100 opacity-75' 
-                    : 'bg-white shadow-sm hover:shadow-md'
+                    ? 'bg-slate-50/50 border border-slate-200 opacity-80' 
+                    : 'bg-white border border-slate-200 shadow-sm hover:shadow-md'
                 }`}
               >
-                {/* Unread Dot Indicator */}
                 {!isRead && (
-                  <div className="absolute top-5 left-2 h-2 w-2 rounded-full bg-blue-500 shadow-sm" />
+                  <div className="absolute top-6 left-2.5 h-2.5 w-2.5 rounded-full bg-blue-500 shadow-sm border border-white" />
                 )}
 
-                {/* Status Icon */}
-                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${style.className}`}>
+                <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${style.className}`}>
                   <Icon name={style.icon} className="h-5 w-5" />
                 </div>
                 
-                {/* Content Body */}
                 <div className="flex flex-1 flex-col justify-center">
-                  <div className="flex items-start justify-between gap-4 mb-1">
-                    <h3 className={`text-sm tracking-wide ${isRead ? 'font-semibold text-slate-600' : 'font-bold text-slate-900'}`}>
+                  <div className="flex items-start justify-between gap-4 mb-1.5">
+                    <h3 className={`text-base tracking-tight ${isRead ? 'font-bold text-slate-600' : 'font-extrabold text-slate-900'}`}>
                       {n.title}
                     </h3>
-                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-widest text-slate-400 mt-1">
                       {timeAgo(n.timestamp)}
                     </span>
                   </div>
                   
-                  <p className="text-sm text-slate-500 leading-relaxed">
+                  <p className="text-sm font-medium text-slate-500 leading-relaxed">
                     {n.message}
                   </p>
                   
-                  {/* Action Button */}
                   {!isRead && (
-                    <div className="mt-2">
+                    <div className="mt-3">
                       <button
                         onClick={() => handleMarkAsRead(n.id)}
-                        className="inline-flex items-center text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors"
+                        className="inline-flex items-center text-[13px] font-bold text-blue-600 hover:text-blue-800 transition-colors"
                       >
                         Mark as read
                       </button>

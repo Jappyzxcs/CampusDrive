@@ -1,166 +1,139 @@
-import { useState } from 'react';
 import { Icon } from '../common/Icon';
-import { useAuth } from '../../context/AuthContext';
-import { useToast } from '../../context/ToastContext';
-import { flaggingService } from '../../services/flaggingService';
-import { Modal } from '../common/Modal'; 
 
-const RESULT_CONFIG = {
-  valid: { tone: 'valid', label: 'ACTIVE', icon: 'check' },
-  revoked: { tone: 'invalid', label: 'REVOKED / INACTIVE', icon: 'alert' },
-  expired: { tone: 'invalid', label: 'EXPIRED REGISTRATION', icon: 'alert' },
-  mismatch: { tone: 'invalid', label: 'STICKER MISMATCH', icon: 'alert' },
-  unregistered: { tone: 'invalid', label: 'UNREGISTERED VEHICLE', icon: 'alert' },
-  duplicate: { tone: 'invalid', label: 'DUPLICATE STICKER', icon: 'alert' },
-  no_record: { tone: 'invalid', label: 'NO RECORD FOUND', icon: 'alert' },
-};
+export function VerificationResultCard({ result, onFlagClick }) {
+  if (!result) return null;
 
-const TONE_STYLES = {
-  valid: 'bg-emerald-600 text-white',
-  invalid: 'bg-danger-600 text-white',
-};
-
-const formatDate = (isoString) => {
-  if (!isoString) return '—';
-  return new Date(isoString).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit' });
-};
-
-export function VerificationResultCard({ result }) {
-  const config = RESULT_CONFIG[result.result] || RESULT_CONFIG.no_record;
-  const { user } = useAuth();
-  const { showToast } = useToast();
-  
-  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
-  const [flagReason, setFlagReason] = useState('');
-  const [flagDetails, setFlagDetails] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleFlagSubmit = async (e) => {
-    e.preventDefault();
-    if (!flagReason) return showToast('Please select a reason.', { type: 'danger' });
-    if (flagReason === 'Others' && !flagDetails.trim()) return showToast('Please specify the details.', { type: 'danger' });
-
-    setIsSubmitting(true);
-    try {
-      const vehicleId = result.id || result.vehicleId || 'unknown_id'; 
-      const count = await flaggingService.submitFlag(
-        vehicleId, 
-        result.stickerSerial || 'Unknown', 
-        user?.uid || 'guard', 
-        flagReason, 
-        flagDetails
-      );
-      
-      if (count >= 3) {
-        showToast(`Vehicle has reached 3 offenses and access is now REVOKED.`, { type: 'danger' });
-      } else {
-        showToast(`Vehicle flagged successfully. Offense count: ${count} of 3`, { type: 'success' });
-      }
-      
-      setIsFlagModalOpen(false);
-      setFlagReason('');
-      setFlagDetails('');
-      
-      setTimeout(() => window.location.reload(), 1500);
-      
-    } catch (error) {
-      console.error(error);
-      showToast('Failed to submit flag.', { type: 'danger' });
-    } finally {
-      setIsSubmitting(false);
+  const parseCustomDate = (dateStr) => {
+    if (!dateStr) return null;
+    if (typeof dateStr.toDate === 'function') return dateStr.toDate();
+    if (typeof dateStr === 'string' && dateStr.includes('/')) {
+      const [day, month, year] = dateStr.split('/');
+      return new Date(year, parseInt(month) - 1, day);
     }
+    const d = new Date(dateStr);
+    return isNaN(d) ? null : d;
   };
 
-  return (
-    <div className={`flex flex-col items-center gap-4 rounded-2xl px-6 py-10 text-center ${TONE_STYLES[config.tone]}`}>
-      <Icon name={config.icon} className="h-16 w-16" />
-      <p className="text-3xl font-extrabold tracking-tight sm:text-4xl">{config.label}</p>
+  const formatDisplayDate = (dateStr) => {
+    if (!dateStr) return 'Not Provided';
+    const d = parseCustomDate(dateStr);
+    if (!d) return dateStr;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
-      <div className="mt-2 w-full max-w-sm rounded-xl bg-white/10 px-5 py-4 text-left backdrop-blur-sm">
-        <Row label="Plate" value={result.plateNumber || '—'} />
-        <Row label="Sticker Serial" value={result.stickerSerial || '—'} />
-        <Row label="Owner" value={result.ownerName || '—'} />
-        {result.vehicleMake && <Row label="Vehicle" value={result.vehicleMake} />}
+  const isStatusValid = result.status === 'valid' || result.result === 'valid';
+  const isStatusRevoked = result.status === 'revoked' || result.result === 'revoked';
+  const statusKey = result.status || result.result;
+  
+  // THE FIX: Always show documents for registered vehicles so the UI doesn't break
+  const showDocuments = ['valid', 'revoked', 'expired'].includes(statusKey);
+
+  const alertText = result.alert || (isStatusValid ? 'Allow Entry' : isStatusRevoked ? 'Access Denied: Sticker Revoked' : 'Entry Denied');
+
+  return (
+    <div className={`flex flex-col items-center justify-center rounded-[2rem] p-6 text-center shadow-2xl border-4 ${
+      isStatusValid ? 'bg-emerald-600 border-emerald-400' : 'bg-red-600 border-red-400'
+    }`}>
+      
+      <div className={`mb-5 flex h-24 w-24 items-center justify-center rounded-full shadow-xl ${
+        isStatusValid ? 'bg-emerald-500' : 'bg-red-700'
+      }`}>
+        <Icon 
+          name={isStatusValid ? 'check' : 'alert'} 
+          className="h-12 w-12 !text-white" 
+        />
+      </div>
+      
+      <h1 className="mb-2 text-5xl font-black uppercase tracking-tight !text-white drop-shadow-md">
+        {isStatusValid ? 'ACTIVE' : isStatusRevoked ? 'REVOKED' : 'INVALID'}
+      </h1>
+      
+      <p className="mb-8 text-xl font-bold !text-white/95 drop-shadow-sm">
+        {alertText}
+      </p>
+
+     <div className="w-full rounded-2xl bg-white p-5 text-left shadow-xl">
+        <ResultRow label="Plate Number" value={result.plateNumber} highlight status={isStatusValid ? 'valid' : 'invalid'} />
+        <ResultRow label="Sticker Serial" value={result.stickerSerial || result.serial || 'N/A'} />
+        <ResultRow label="Owner" value={result.ownerName || result.owner || 'Unknown'} />
+        <ResultRow label="Vehicle" value={result.vehicleMake || result.make || 'N/A'} />
         
-        {(result.dateIssued && result.validUntil) && (
-          <Row label="Sticker Validity" value={`${formatDate(result.dateIssued)} → ${formatDate(result.validUntil)}`} />
-        )}
-        
-    {/* Render the Revocation Reason if present */}
-        {result.revokeReason && (
-          <div className="mt-3 rounded-lg bg-black/20 p-3 text-left border border-white/20">
-            <span className="block text-[10px] font-bold text-white/60 uppercase tracking-wider mb-1">Reason for Revocation</span>
+        {isStatusRevoked && result.revokeReason && (
+          <div className="mt-4 rounded-xl bg-red-50 p-4 border border-red-200 flex flex-col mb-2 shadow-sm">
+            <span className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Reason for Revocation</span>
             {result.revokeReason.includes('. Last violation:') ? (
               <>
-                <span className="block text-sm font-bold text-white">Automatically revoked (3 strikes)</span>
-                <span className="block text-xs text-white/80 mt-1">
-                  <span className="font-semibold text-white/90">Last violation:</span> {result.revokeReason.split('. Last violation:')[1]?.trim()}
+                <span className="text-lg font-bold text-red-800 leading-tight">Automatically revoked (3 strikes)</span>
+                <span className="text-sm font-medium text-red-700 mt-1">
+                  <span className="font-bold">Last violation:</span> {result.revokeReason.split('. Last violation:')[1]?.trim()}
                 </span>
               </>
             ) : (
-              <span className="block text-sm font-bold text-white">{result.revokeReason}</span>
+              <span className="text-lg font-bold text-red-800 leading-tight">{result.revokeReason}</span>
             )}
           </div>
         )}
         
+        {(result.dateIssued && result.validUntil) && (
+          <ResultRow 
+            label="Sticker Validity" 
+            value={`${formatDisplayDate(result.dateIssued)} → ${formatDisplayDate(result.validUntil)}`} 
+          />
+        )}
+
+        {/* THE FIX: Guaranteed to show Expiry Dates if the vehicle exists in the system */}
+        {showDocuments && (
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="mb-2 flex items-center gap-2">
+              <Icon name="file-text" className="h-4 w-4 text-slate-400" />
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Document Expirations</span>
+            </div>
+            <ResultRow 
+              label="OR Expiry" 
+              value={formatDisplayDate(result.orExpiry)} 
+            />
+            <ResultRow 
+              label="License Expiry" 
+              value={formatDisplayDate(result.licenseExpiry)} 
+            />
+          </div>
+        )}
+
         {(result.vehicleImage || result.vehicleImageUrl) && (
-          <div className="mt-4 pt-3 border-t border-white/20 flex flex-col items-center">
-            <span className="text-xs font-bold text-white/80 uppercase tracking-wider mb-2">Vehicle Proof Photo</span>
+          <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Registered Vehicle Proof</span>
             <img 
               src={result.vehicleImage || result.vehicleImageUrl} 
-              alt="Registered Vehicle" 
-              className="h-36 w-full rounded-lg object-cover border border-white/30 shadow-md"
+              alt="Vehicle Proof" 
+              className="h-36 w-full rounded-xl object-cover border border-slate-300 shadow-inner"
             />
           </div>
         )}
       </div>
-
-      {result.result !== 'no_record' && result.result !== 'revoked' && (
+      
+      {onFlagClick && (
         <button 
-          onClick={() => setIsFlagModalOpen(true)}
-          className="mt-4 w-full max-w-sm rounded-xl bg-black/20 py-3 text-sm font-bold text-white hover:bg-black/40 border border-white/20 transition-all shadow-sm"
+          onClick={onFlagClick}
+          className={`mt-5 w-full rounded-xl border-2 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-all active:scale-95 shadow-sm ${
+            isStatusValid ? 'border-emerald-500 bg-emerald-700/40 hover:bg-emerald-700' : 'border-red-500 bg-red-700/40 hover:bg-red-700'
+          }`}
         >
           Flag / Report Vehicle Offense
         </button>
-      )}
-
-      {isFlagModalOpen && (
-        <Modal isOpen={isFlagModalOpen} onClose={() => !isSubmitting && setIsFlagModalOpen(false)} title="Report Vehicle Offense">
-          <form onSubmit={handleFlagSubmit} className="flex flex-col gap-4 p-2 text-slate-800 text-left">
-            <div className="flex flex-col gap-3">
-              <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-slate-50 transition-colors">
-                <input type="radio" name="reason" value="Sticker swapping" className="mt-0.5" onChange={(e) => setFlagReason(e.target.value)} />
-                <div className="flex flex-col">
-                  <span className="text-sm font-bold text-slate-900">Sticker Swapping</span>
-                  <span className="text-xs text-slate-500">The scanned sticker is attached to a vehicle that does not match the registered proof photo.</span>
-                </div>
-              </label>
-              <label className="flex items-center gap-3 cursor-pointer rounded-lg border border-slate-200 p-3 hover:bg-slate-50 transition-colors">
-                <input type="radio" name="reason" value="Others" onChange={(e) => setFlagReason(e.target.value)} />
-                <span className="text-sm font-bold text-slate-900">Other Violation</span>
-              </label>
-            </div>
-            {flagReason === 'Others' && (
-              <textarea placeholder="Specify the offense details..." value={flagDetails} onChange={(e) => setFlagDetails(e.target.value)} className="w-full rounded-md border border-slate-300 p-3 text-sm focus:border-danger-500 outline-none focus:ring-1 focus:ring-danger-500" rows={3} required />
-            )}
-            <div className="flex justify-end gap-3 mt-4 border-t border-slate-100 pt-4">
-              <button type="button" onClick={() => setIsFlagModalOpen(false)} className="btn-secondary" disabled={isSubmitting}>Cancel</button>
-              <button type="submit" className="btn-primary bg-danger-600 hover:bg-danger-700" disabled={isSubmitting}>
-                {isSubmitting ? 'Submitting...' : 'Submit Report'}
-              </button>
-            </div>
-          </form>
-        </Modal>
       )}
     </div>
   );
 }
 
-function Row({ label, value }) {
+function ResultRow({ label, value, highlight, status }) {
   return (
-    <div className="flex items-center justify-between border-b border-white/15 py-1.5 text-sm last:border-0">
-      <span className="text-white/70">{label}</span>
-      <span className="font-semibold text-right">{value}</span>
+    <div className="flex items-center justify-between border-b border-slate-200 py-3.5 last:border-0">
+      <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">{label}</span>
+      <span className={`text-base font-bold text-slate-900 ${
+        highlight ? `text-2xl tracking-wide \${status === 'valid' ? '!text-emerald-700' : '!text-red-700'}` : ''
+      }`}>
+        {value}
+      </span>
     </div>
   );
 }

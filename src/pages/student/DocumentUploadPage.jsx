@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FileUploadCard } from '../../components/forms/FileUploadCard';
-import { DashboardCard } from '../../components/cards/DashboardCard';
 import { useToast } from '../../context/ToastContext';
 import { ROUTES } from '../../constants/routes';
 
-// Updated Requirements based on your specifications
 const REQUIRED_DOCS = [
   { key: 'license', label: "Driver's License", hint: 'Clear photo or scan, all corners visible.' },
   { key: 'ltoOr', label: 'LTO Official Receipt (OR)', hint: 'Must be current and updated.' },
@@ -19,7 +17,7 @@ export default function DocumentUploadPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { showToast } = useToast();
-  const vehicleDraft = location.state?.vehicleDraft; // Data from Step 1 & 2
+  const vehicleDraft = location.state?.vehicleDraft;
 
   const [files, setFiles] = useState({});
   const [errors, setErrors] = useState({});
@@ -41,7 +39,6 @@ export default function DocumentUploadPage() {
 
     setIsSubmitting(true);
     setIsProcessing(true);
-    // Stub: real flow uploads to storage, then the NLP/OCR pipeline
     setTimeout(() => {
       setIsProcessing(false);
       setIsSubmitting(false);
@@ -51,15 +48,18 @@ export default function DocumentUploadPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <div>
-        <h2 className="text-xl font-semibold text-primary-900">Upload Documents</h2>
-        <p className="text-sm text-slate-500">
-          Step 3 of 3 {vehicleDraft?.plateNumber ? `· For ${vehicleDraft.plateNumber}` : ''} &middot; Please provide clear photos or scans of the following.
+    <div className="flex w-full max-w-4xl flex-col gap-6 font-sans text-slate-800 pb-10">
+      
+      <div className="flex flex-col gap-1 mb-2">
+        <h1 className="text-3xl font-extrabold font-sans tracking-tight text-slate-900">
+          Upload Documents
+        </h1>
+        <p className="text-base text-slate-500 font-medium">
+          Step 3 of 3 {vehicleDraft?.plateNumber ? `· For ${vehicleDraft.plateNumber}` : ''} &middot; Please provide clear photos or scans.
         </p>
       </div>
 
-      <DashboardCard>
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 hover:shadow-md transition-shadow">
         <form onSubmit={handleSubmit} className="flex flex-col gap-6" noValidate>
           {REQUIRED_DOCS.map((doc) => (
             <FileUploadCard
@@ -72,16 +72,16 @@ export default function DocumentUploadPage() {
             />
           ))}
 
-          <div className="flex justify-between border-t border-slate-100 pt-5">
-            <button type="button" className="btn-secondary" onClick={() => navigate(-1)} disabled={isSubmitting}>
+          <div className="flex justify-between border-t border-slate-100 pt-8 mt-2">
+            <button type="button" className="px-6 py-2.5 rounded-xl text-slate-700 bg-slate-50 border border-slate-200 hover:bg-slate-100 hover:text-slate-900 font-bold transition-all" onClick={() => navigate(-1)} disabled={isSubmitting}>
               Back
             </button>
-            <button type="submit" className="btn-primary" disabled={isSubmitting}>
+            <button type="submit" className="px-8 py-3 rounded-xl bg-blue-600 text-white font-bold tracking-wide hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm" disabled={isSubmitting}>
               {isProcessing ? 'Submitting Application…' : 'Submit Application'}
             </button>
           </div>
         </form>
-      </DashboardCard>
+      </div>
     </div>
   );
 }

@@ -9,14 +9,26 @@ import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
 export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
-  const items = NAV_CONFIG[role] || [];
   const { user } = useAuth();
+  
+  // THE FIX: Filter out Reports & Hub links if the user is logged in as BAO
+  const rawItems = NAV_CONFIG[role] || [];
+  const items = rawItems.filter((item) => {
+    const isBao = role === 'bao' || role?.toLowerCase() === 'bao';
+    if (isBao) {
+      const label = (item.label || '').toLowerCase();
+      const path = (item.to || '').toLowerCase();
+      if (label.includes('report') || label.includes('hub') || label.includes('audit') || path.includes('report')) {
+        return false;
+      }
+    }
+    return true;
+  });
   
   // Desktop collapse state
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
 
-  // THE FIX: Live Firebase listener so the red dot vanishes instantly
   useEffect(() => {
     if (!user?.id && !user?.uid) return;
     const uid = user.id || user.uid;
@@ -58,7 +70,7 @@ export function Sidebar({ role, isOpen, onClose, quickInfo, onSignOut }) {
               <div className="leading-tight overflow-hidden whitespace-nowrap">
                 <p className="text-sm font-semibold text-white">CampusDrive</p>
                 <p className="text-[11px] uppercase tracking-wide text-primary-300">
-                  {ROLE_LABELS[role]}
+                  {ROLE_LABELS[role] || 'Administrator'}
                 </p>
               </div>
             )}

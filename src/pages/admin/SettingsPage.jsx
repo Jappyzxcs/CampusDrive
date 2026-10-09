@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '../../context/ToastContext';
 import { Icon } from '../../components/common/Icon';
 import { backupService } from '../../services/backupService';
+import { settingsService } from '../../services/settingsService';
 
 const DEFAULT_SETTINGS = {
   autoFlagDuplicates: true,
@@ -10,7 +11,6 @@ const DEFAULT_SETTINGS = {
   ocrConfidenceThreshold: 85,
 };
 
-// Refactored Toggle Component to match the premium styling
 function Toggle({ checked, onChange, label, description }) {
   return (
     <label className="flex cursor-pointer items-start justify-between gap-6 py-4">
@@ -36,22 +36,37 @@ export default function SettingsPage() {
   const { showToast } = useToast();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   // Backup & Export States
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [csvCollection, setCsvCollection] = useState('vehicles');
   const [isExportingCsv, setIsExportingCsv] = useState(false);
 
+  // Fetch settings from Firebase on load
+  useEffect(() => {
+    async function loadSettings() {
+      const data = await settingsService.getSettings();
+      setSettings(data);
+      setIsLoading(false);
+    }
+    loadSettings();
+  }, []);
+
   function update(key, value) {
     setSettings((s) => ({ ...s, [key]: value }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     setIsSaving(true);
-    setTimeout(() => {
+    try {
+      await settingsService.updateSettings(settings);
+      showToast('Settings saved globally to database.', { type: 'success' });
+    } catch (error) {
+      showToast('Failed to save settings.', { type: 'danger' });
+    } finally {
       setIsSaving(false);
-      showToast('Settings saved.', { type: 'success' });
-    }, 500);
+    }
   }
 
   const handleBackup = async () => {
@@ -81,6 +96,8 @@ export default function SettingsPage() {
       setIsExportingCsv(false);
     }
   };
+
+  if (isLoading) return null; // Prevent UI flicker before settings load
 
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8 font-sans text-slate-800 pb-10">

@@ -30,6 +30,37 @@ export default function ManualLookupPage() {
       );
       
       if (matchedApproved) {
+        
+        // THE FIX: "Deep Hunt" capability. If dates are missing from the fast cache, dive into the original databases.
+        let orExp = matchedApproved.orExpiry || matchedApproved.nlpExtractedData?.orExpiry || null;
+        let licExp = matchedApproved.licenseExpiry || matchedApproved.nlpExtractedData?.licenseExpiry || null;
+
+        if (!orExp || !licExp) {
+          try {
+            const targetPlate = (matchedApproved.plateNumber || '').replace(/\s+/g, '').toUpperCase();
+            
+            // Step 1: Hunt in Main Vehicles
+            const vSnap = await getDocs(collection(db, 'vehicles'));
+            const vDoc = vSnap.docs.map(d => d.data()).find(v => (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
+            if (vDoc) {
+              orExp = orExp || vDoc.orExpiry || vDoc.nlpExtractedData?.orExpiry || null;
+              licExp = licExp || vDoc.licenseExpiry || vDoc.nlpExtractedData?.licenseExpiry || null;
+            }
+
+            // Step 2: Hunt in Original Applications (where OCR is primarily saved)
+            if (!orExp || !licExp) {
+              const aSnap = await getDocs(collection(db, 'applications'));
+              const aDoc = aSnap.docs.map(d => d.data()).find(a => (a.plateNumber || a.vehicleDetails?.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
+              if (aDoc) {
+                orExp = orExp || aDoc.orExpiry || aDoc.nlpExtractedData?.orExpiry || null;
+                licExp = licExp || aDoc.licenseExpiry || aDoc.nlpExtractedData?.licenseExpiry || null;
+              }
+            }
+          } catch (e) {
+            console.error("Deep search for dates failed", e);
+          }
+        }
+
         if (matchedApproved.accreditationStatus === 'Revoked' || matchedApproved.status === 'revoked') {
            setResult({ 
              id: matchedApproved.id,
@@ -39,7 +70,9 @@ export default function ManualLookupPage() {
              ownerName: `${matchedApproved.ownerName || 'Unknown'} (${matchedApproved.registrantType || 'Student'})`, 
              vehicleMake: matchedApproved.vehicleMake || 'N/A',
              vehicleImageUrl: matchedApproved.vehicleImageUrl || '',
-             revokeReason: matchedApproved.revokeReason || 'Multiple Campus Violations'
+             revokeReason: matchedApproved.revokeReason || 'Multiple Campus Violations',
+             orExpiry: orExp,
+             licenseExpiry: licExp
            });
         } else if (matchedApproved.accreditationStatus === 'Expired') {
            setResult({ 
@@ -49,7 +82,9 @@ export default function ManualLookupPage() {
              stickerSerial: matchedApproved.stickerSerial, 
              ownerName: `${matchedApproved.ownerName || 'Unknown'} (${matchedApproved.registrantType || 'Student'})`, 
              vehicleMake: matchedApproved.vehicleMake || 'N/A',
-             vehicleImageUrl: matchedApproved.vehicleImageUrl || ''
+             vehicleImageUrl: matchedApproved.vehicleImageUrl || '',
+             orExpiry: orExp,
+             licenseExpiry: licExp
            });
         } else {
            const issued = matchedApproved.dateIssued || null;
@@ -69,7 +104,9 @@ export default function ManualLookupPage() {
              vehicleMake: matchedApproved.vehicleMake || 'N/A',
              vehicleImageUrl: matchedApproved.vehicleImageUrl || '',
              dateIssued: issued, 
-             validUntil: valid   
+             validUntil: valid,
+             orExpiry: orExp,
+             licenseExpiry: licExp   
            });
         }
         setIsSearching(false);
@@ -91,7 +128,9 @@ export default function ManualLookupPage() {
            stickerSerial: 'Pending Issuance',
            ownerName: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
            vehicleMake: `${matchedVehicle.make || ''} ${matchedVehicle.model || ''}`.trim() || 'N/A',
-           vehicleImageUrl: matchedVehicle.vehicleImageUrl || ''
+           vehicleImageUrl: matchedVehicle.vehicleImageUrl || '',
+           orExpiry: matchedVehicle.orExpiry || matchedVehicle.nlpExtractedData?.orExpiry || null,
+           licenseExpiry: matchedVehicle.licenseExpiry || matchedVehicle.nlpExtractedData?.licenseExpiry || null
          });
       } else {
          setResult({

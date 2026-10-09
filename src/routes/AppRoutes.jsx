@@ -37,7 +37,6 @@ import StickerManagementPage from '../pages/admin/StickerManagementPage';
 import VisitorApprovalsPage from '../pages/admin/VisitorApprovalsPage';
 import UserManagementPage from '../pages/admin/UserManagementPage';
 import EntryLogsPage from '../pages/admin/EntryLogsPage';
-import ReportsAndAuditPage from '../pages/admin/ReportsAndAuditPage';
 import SettingsPage from '../pages/admin/SettingsPage';
 
 // --- GUARD ---
@@ -97,7 +96,6 @@ export const router = createBrowserRouter(
           <Route path={ROUTES.ADMIN_VISITOR_APPROVALS} element={<VisitorApprovalsPage />} handle={{ title: 'Visitor Approvals' }} />
           <Route path={ROUTES.ADMIN_USER_MANAGEMENT} element={<UserManagementPage />} handle={{ title: 'User Management' }} />
           <Route path={ROUTES.ADMIN_ENTRY_LOGS} element={<EntryLogsPage />} handle={{ title: 'Entry Logs' }} />
-          <Route path={ROUTES.ADMIN_REPORTS} element={<ReportsAndAuditPage />} handle={{ title: 'Reports & Hub' }} /> 
           <Route path={ROUTES.ADMIN_SETTINGS} element={<SettingsPage />} handle={{ title: 'Settings' }} />
         </Route>
       </Route>

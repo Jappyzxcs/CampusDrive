@@ -8,6 +8,7 @@ import { db } from '../../config/firebase';
 import { aiService } from '../../services/aiService';
 import { useAuth } from '../../context/AuthContext';
 import { flaggingService } from '../../services/flaggingService';
+import { VerificationResultCard } from '../../components/scanner/VerificationResultCard';
 
 export default function ScannerPage() {
   const { user } = useAuth();
@@ -93,10 +94,10 @@ export default function ScannerPage() {
     return null; 
   };
 
-  // THE FIX: Safely parse DD/MM/YYYY format so the math works perfectly
   const parseCustomDate = (dateStr) => {
     if (!dateStr) return null;
-    if (dateStr.includes('/')) {
+    if (typeof dateStr.toDate === 'function') return dateStr.toDate();
+    if (typeof dateStr === 'string' && dateStr.includes('/')) {
       const [day, month, year] = dateStr.split('/');
       return new Date(year, parseInt(month) - 1, day);
     }
@@ -158,24 +159,49 @@ export default function ScannerPage() {
       });
 
       let finalResult;
-      
       const today = new Date();
       today.setHours(0, 0, 0, 0); 
       
+      // THE FIX: Deep Hunting applied to the Scanner as well
+      let orExp = matchedVehicle ? (matchedVehicle.orExpiry || matchedVehicle.nlpExtractedData?.orExpiry || null) : null;
+      let licExp = matchedVehicle ? (matchedVehicle.licenseExpiry || matchedVehicle.nlpExtractedData?.licenseExpiry || null) : null;
+
+      if (matchedVehicle && (!orExp || !licExp)) {
+        try {
+          const targetPlate = (matchedVehicle.plateNumber || '').replace(/\s+/g, '').toUpperCase();
+          
+          // Hunt in Main Vehicles
+          const vSnap = await getDocs(collection(db, 'vehicles'));
+          const vDoc = vSnap.docs.map(d => d.data()).find(v => (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
+          if (vDoc) {
+            orExp = orExp || vDoc.orExpiry || vDoc.nlpExtractedData?.orExpiry || null;
+            licExp = licExp || vDoc.licenseExpiry || vDoc.nlpExtractedData?.licenseExpiry || null;
+          }
+
+          // Hunt in Original Applications
+          if (!orExp || !licExp) {
+            const aSnap = await getDocs(collection(db, 'applications'));
+            const aDoc = aSnap.docs.map(d => d.data()).find(a => (a.plateNumber || a.vehicleDetails?.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
+            if (aDoc) {
+              orExp = orExp || aDoc.orExpiry || aDoc.nlpExtractedData?.orExpiry || null;
+              licExp = licExp || aDoc.licenseExpiry || aDoc.nlpExtractedData?.licenseExpiry || null;
+            }
+          }
+        } catch (e) {
+          console.error("Deep search for dates failed", e);
+        }
+      }
+
       let isOrExpired = false;
       let isLicenseExpired = false;
       
-      if (matchedVehicle) {
-        if (matchedVehicle.orExpiry) {
-          // THE FIX: Use the custom date parser
-          const orDate = parseCustomDate(matchedVehicle.orExpiry);
-          if (orDate && orDate < today) isOrExpired = true;
-        }
-        if (matchedVehicle.licenseExpiry) {
-          // THE FIX: Use the custom date parser
-          const licDate = parseCustomDate(matchedVehicle.licenseExpiry);
-          if (licDate && licDate < today) isLicenseExpired = true;
-        }
+      if (orExp) {
+        const orDate = parseCustomDate(orExp);
+        if (orDate && orDate < today) isOrExpired = true;
+      }
+      if (licExp) {
+        const licDate = parseCustomDate(licExp);
+        if (licDate && licDate < today) isLicenseExpired = true;
       }
       
       if (!matchedVehicle) {
@@ -191,7 +217,9 @@ export default function ScannerPage() {
             owner: `${pendingVehicle.ownerName || 'Unknown'} (${pendingVehicle.registrantType || 'Student'})`, 
             make: `${pendingVehicle.make || ''} ${pendingVehicle.model || ''}`.trim() || 'N/A', 
             serial: cleanedText, 
-            alert: `Sticker found, but vehicle application is still PENDING. Entry denied.` 
+            alert: `Sticker found, but vehicle application is still PENDING. Entry denied.`,
+            orExpiry: pendingVehicle.orExpiry || pendingVehicle.nlpExtractedData?.orExpiry || null,
+            licenseExpiry: pendingVehicle.licenseExpiry || pendingVehicle.nlpExtractedData?.licenseExpiry || null
           };
         } else {
           finalResult = { 
@@ -214,7 +242,9 @@ export default function ScannerPage() {
           serial: matchedVehicle.stickerSerial, 
           revokeReason: matchedVehicle.revokeReason || 'Multiple Campus Violations',
           vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || null,
-          alert: 'Access Denied: Sticker Revoked' 
+          alert: 'Access Denied: Sticker Revoked',
+          orExpiry: orExp,
+          licenseExpiry: licExp 
         };
       } else if (matchedVehicle.accreditationStatus === 'Expired' || matchedVehicle.status === 'expired' || isOrExpired || isLicenseExpired) {
         
@@ -230,8 +260,8 @@ export default function ScannerPage() {
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
           alert: expireReason,
-          orExpiry: matchedVehicle.orExpiry || null,
-          licenseExpiry: matchedVehicle.licenseExpiry || null,
+          orExpiry: orExp,
+          licenseExpiry: licExp
         };
       } else {
         const issued = matchedVehicle.dateIssued || null;
@@ -253,8 +283,8 @@ export default function ScannerPage() {
           dateIssued: issued,
           validUntil: valid,
           alert: 'Vehicle Authorized.',
-          orExpiry: matchedVehicle.orExpiry || null,
-          licenseExpiry: matchedVehicle.licenseExpiry || null,
+          orExpiry: orExp,
+          licenseExpiry: licExp
         };
       }
 
@@ -355,13 +385,6 @@ export default function ScannerPage() {
     setResult(null);
   }
 
-  const formatDisplayDate = (dateStr) => {
-    if (!dateStr) return 'Not Provided';
-    const d = parseCustomDate(dateStr);
-    if (!d || isNaN(d)) return dateStr;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
-
   return (
     <div className="mx-auto flex max-h-screen w-full max-w-lg flex-col bg-slate-900 pb-6 font-sans">
       
@@ -441,95 +464,11 @@ export default function ScannerPage() {
 
       {phase === 'result' && result && (
         <div className="flex flex-1 flex-col px-4 pb-4 animate-in fade-in zoom-in-95 duration-200 overflow-y-auto">
-          <div className={`flex flex-1 flex-col items-center justify-center rounded-[2rem] p-6 text-center shadow-2xl border-4 ${
-            result.status === 'valid' ? 'bg-emerald-600 border-emerald-400' : 'bg-red-600 border-red-400'
-          }`}>
-            
-            <div className={`mb-5 flex h-24 w-24 items-center justify-center rounded-full shadow-xl ${
-              result.status === 'valid' ? 'bg-emerald-500' : 'bg-red-700'
-            }`}>
-              <Icon 
-                name={result.status === 'valid' ? 'check' : 'alert'} 
-                className="h-12 w-12 !text-white" 
-              />
-            </div>
-            
-            <h1 className="mb-2 text-5xl font-black uppercase tracking-tight !text-white drop-shadow-md">
-              {result.status === 'valid' ? 'ACTIVE' : result.status === 'revoked' ? 'REVOKED' : 'INVALID'}
-            </h1>
-            
-            <p className="mb-8 text-xl font-bold !text-white/95 drop-shadow-sm">
-              {result.status === 'valid' ? 'Allow Entry' : result.alert}
-            </p>
-
-           <div className="w-full rounded-2xl bg-white p-5 text-left shadow-xl">
-              <ResultRow label="Plate Number" value={result.plateNumber} highlight status={result.status} />
-              <ResultRow label="Sticker Serial" value={result.serial} />
-              <ResultRow label="Owner" value={result.owner} />
-              <ResultRow label="Vehicle" value={result.make} />
-              
-              {result.status === 'revoked' && result.revokeReason && (
-                <div className="mt-4 rounded-xl bg-red-50 p-4 border border-red-200 flex flex-col mb-2 shadow-sm">
-                  <span className="text-xs font-bold text-red-500 uppercase tracking-wide mb-1">Reason for Revocation</span>
-                  {result.revokeReason.includes('. Last violation:') ? (
-                    <>
-                      <span className="text-lg font-bold text-red-800 leading-tight">Automatically revoked (3 strikes)</span>
-                      <span className="text-sm font-medium text-red-700 mt-1">
-                        <span className="font-bold">Last violation:</span> {result.revokeReason.split('. Last violation:')[1]?.trim()}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-lg font-bold text-red-800 leading-tight">{result.revokeReason}</span>
-                  )}
-                </div>
-              )}
-              
-              {(result.dateIssued && result.validUntil) && (
-                <ResultRow 
-                  label="Sticker Validity" 
-                  value={`${formatDisplayDate(result.dateIssued)} → ${formatDisplayDate(result.validUntil)}`} 
-                />
-              )}
-
-              {(result.orExpiry || result.licenseExpiry) && (
-                <div className="mt-4 pt-4 border-t border-slate-100">
-                  <div className="mb-2 flex items-center gap-2">
-                    <Icon name="file-text" className="h-4 w-4 text-slate-400" />
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Document Expirations</span>
-                  </div>
-                  <ResultRow 
-                    label="OR Expiry" 
-                    value={formatDisplayDate(result.orExpiry)} 
-                  />
-                  <ResultRow 
-                    label="License Expiry" 
-                    value={formatDisplayDate(result.licenseExpiry)} 
-                  />
-                </div>
-              )}
-
-              {result.vehicleImage && (
-                <div className="mt-4 pt-4 border-t border-slate-200 flex flex-col items-center">
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Registered Vehicle Proof</span>
-                  <img 
-                    src={result.vehicleImage} 
-                    alt="Vehicle Proof" 
-                    className="h-36 w-full rounded-xl object-cover border border-slate-300 shadow-inner"
-                  />
-                </div>
-              )}
-            </div>
-            
-            <button 
-              onClick={() => setIsFlagModalOpen(true)}
-              className={`mt-5 w-full rounded-xl border-2 py-3.5 text-sm font-bold uppercase tracking-wide text-white transition-all active:scale-95 shadow-sm ${
-                result.status === 'valid' ? 'border-emerald-500 bg-emerald-700/40 hover:bg-emerald-700' : 'border-red-500 bg-red-700/40 hover:bg-red-700'
-              }`}
-            >
-              Flag / Report Vehicle Offense
-            </button>
-
-          </div>
+          
+          <VerificationResultCard 
+            result={result} 
+            onFlagClick={() => setIsFlagModalOpen(true)} 
+          />
 
           <button 
             onClick={handleReset} 
@@ -614,19 +553,6 @@ export default function ScannerPage() {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ResultRow({ label, value, highlight, status }) {
-  return (
-    <div className="flex items-center justify-between border-b border-slate-200 py-3.5 last:border-0">
-      <span className="text-sm font-bold text-slate-500 uppercase tracking-wide">{label}</span>
-      <span className={`text-base font-bold text-slate-900 ${
-        highlight ? `text-2xl tracking-wide \${status === 'valid' ? '!text-emerald-700' : '!text-red-700'}` : ''
-      }`}>
-        {value}
-      </span>
     </div>
   );
 }

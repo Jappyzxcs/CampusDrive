@@ -24,9 +24,7 @@ export const NAV_CONFIG = {
     { label: 'Vehicle Management', to: ROUTES.ADMIN_VEHICLE_MANAGEMENT, icon: 'car' },
     { label: 'Visitor Approvals', to: ROUTES.ADMIN_VISITOR_APPROVALS, icon: 'idcard' },
     { label: 'User Management', to: ROUTES.ADMIN_USER_MANAGEMENT, icon: 'users' },
-    { label: 'Entry Logs', to: ROUTES.ADMIN_ENTRY_LOGS, icon: 'log' },
-    // MERGED: One link opens the 3-tab hub (Analytics, Flags, Audits)
-    { label: 'Reports & Hub', to: ROUTES.ADMIN_REPORTS, icon: 'chart' }, 
+    { label: 'Entry Logs', to: ROUTES.ADMIN_ENTRY_LOGS, icon: 'log' }, 
     { label: 'Settings', to: ROUTES.ADMIN_SETTINGS, icon: 'settings' },
   ],
   [ROLES.BAO]: [

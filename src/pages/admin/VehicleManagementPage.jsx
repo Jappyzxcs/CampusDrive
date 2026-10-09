@@ -11,7 +11,7 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../constants/roles';
 
-// Database imports for fetching the original application documents on-the-fly
+// Database imports
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -32,6 +32,21 @@ const ROLE_OPTIONS = [
   { value: 'Faculty', label: 'Faculty' },
 ];
 
+// THE FIX: Premium SmartBadge to prevent crashes and fix the ugly revoked styling
+function SmartBadge({ status }) {
+  const s = (status || '').toLowerCase();
+  
+  if (s === 'revoked') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-rose-100 text-rose-900 border border-rose-200 uppercase tracking-wider shadow-sm">Revoked</span>;
+  if (s === 'expired') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-orange-100 text-orange-900 border border-orange-200 uppercase tracking-wider shadow-sm">Expired</span>;
+  if (['visit completed', 'completed', 'visit_completed', 'active'].includes(s)) return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200 uppercase tracking-wider shadow-sm">Active</span>;
+  if (['for_payment', 'approved'].includes(s)) return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-blue-100 text-blue-900 border border-blue-200 uppercase tracking-wider shadow-sm">Approved</span>;
+  if (s === 'pending') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-200 uppercase tracking-wider shadow-sm">Pending</span>;
+  if (s === 'under_review') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-purple-100 text-purple-900 border border-purple-200 uppercase tracking-wider shadow-sm">Manual Review</span>;
+  if (s === 'rejected') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-100 text-slate-900 border border-slate-200 uppercase tracking-wider shadow-sm">Rejected</span>;
+  
+  return <StatusBadge status={status} />; // Safe fallback
+}
+
 export default function VehicleManagementPage() {
   const { showToast } = useToast();
   const { role } = useAuth();
@@ -44,11 +59,9 @@ export default function VehicleManagementPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debouncedSearch = useDebouncedValue(search);
 
-  // THE FIX: State to hold the documents fetched from the original application
   const [appDocs, setAppDocs] = useState(null);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
 
-  // THE FIX: Automatically hunt down the license photo from the Applications collection when a modal opens
   useEffect(() => {
     let isMounted = true;
 
@@ -57,8 +70,6 @@ export default function VehicleManagementPage() {
         if (isMounted) setAppDocs(null);
         return;
       }
-
-      // If the vehicle was recently updated, it might already have the docs directly
       if (selected.documentUrls?.license) {
         if (isMounted) setAppDocs(selected.documentUrls);
         return;
@@ -67,7 +78,6 @@ export default function VehicleManagementPage() {
       if (isMounted) setIsLoadingDocs(true);
       
       try {
-        // Attempt 1: Fetch directly if we have the applicationId saved
         if (selected.applicationId) {
           const appSnap = await getDoc(doc(db, 'applications', selected.applicationId));
           if (appSnap.exists() && appSnap.data().documentUrls) {
@@ -77,7 +87,6 @@ export default function VehicleManagementPage() {
           }
         }
 
-        // Attempt 2: Safety fallback - Find the application by checking the owner's ID and plate number
         const ownerId = selected.ownerId || selected.userId;
         if (ownerId) {
           const q = query(collection(db, 'applications'), where('userId', '==', ownerId));
@@ -113,12 +122,12 @@ export default function VehicleManagementPage() {
     return () => { isMounted = false; };
   }, [selected]);
 
+  // THE FIX: Array mapping safety to prevent .filter() crashes
   const vehicles = useMemo(() => {
-    return realVehicles || [];
+    return Array.isArray(realVehicles) ? realVehicles : [];
   }, [realVehicles]);
 
   const filtered = useMemo(() => {
-    if (!vehicles) return [];
     return vehicles
       .filter((v) => {
         const type = (v.registrantType || '').toLowerCase();
@@ -151,17 +160,7 @@ export default function VehicleManagementPage() {
     { key: 'ownerName', header: 'Owner', sortable: true },
     { key: 'registrantType', header: 'Role', render: (row) => <span className="text-sm font-medium text-slate-600">{row.registrantType || 'Student'}</span> },
     { key: 'type', header: 'Type', sortable: true },
-    { key: 'status', header: 'Status', render: (row) => {
-        let fixedStatus = row.status || '';
-        const lowerStatus = fixedStatus.toLowerCase();
-        
-        if (['visit completed', 'completed', 'visit_completed'].includes(lowerStatus)) {
-          fixedStatus = 'active'; 
-        }
-        
-        return <StatusBadge status={fixedStatus} />;
-      } 
-    },
+    { key: 'status', header: 'Status', render: (row) => <SmartBadge status={row.status} /> }, // THE FIX
   ];
 
   const handleRevoke = async () => {
@@ -181,7 +180,6 @@ export default function VehicleManagementPage() {
     }
   };
 
-  // Check the vehicle first, then fall back to the newly fetched appDocs
   const getVehiclePhoto = (vehicle) => {
     if (!vehicle) return null;
     return vehicle.vehicleImageUrl || appDocs?.vehiclePhoto || vehicle.documentUrls?.vehiclePhoto || null;
@@ -190,6 +188,18 @@ export default function VehicleManagementPage() {
   const getLicensePhoto = (vehicle) => {
     if (!vehicle) return null;
     return appDocs?.license || vehicle.documentUrls?.license || null;
+  };
+
+  // Safe date parser
+  const renderDate = (dateVal) => {
+    if (!dateVal) return '—';
+    try {
+      const d = dateVal?.toDate ? dateVal.toDate() : new Date(dateVal);
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString();
+    } catch {
+      return '—';
+    }
   };
 
   return (
@@ -237,11 +247,7 @@ export default function VehicleManagementPage() {
       >
         {selected && (
           <div className="flex flex-col gap-5 text-sm">
-            
-            {/* Split Photo Gallery: Vehicle and License */}
             <div className="grid grid-cols-2 gap-4">
-              
-              {/* Vehicle Photo Panel */}
               <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="bg-slate-100 border-b border-slate-200 py-1.5 text-center">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vehicle</span>
@@ -251,7 +257,6 @@ export default function VehicleManagementPage() {
                 </div>
               </div>
 
-              {/* Driver's License Panel */}
               <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <div className="bg-slate-100 border-b border-slate-200 py-1.5 text-center">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Driver's License</span>
@@ -270,25 +275,18 @@ export default function VehicleManagementPage() {
                   )}
                 </div>
               </div>
-
             </div>
 
-            {/* Vehicle Details */}
             <div className="flex flex-col gap-1 mt-2">
               <Row label="Owner" value={`${selected.ownerName} (${selected.registrantType || 'Student'})`} />
               <Row label="Make / Model" value={`${selected.make || selected.vehicleDetails?.make || ''} ${selected.model || selected.vehicleDetails?.model || ''}`.trim() || '—'} />
               <Row label="Type" value={selected.type || selected.vehicleDetails?.vehicleType || '—'} />
-              <Row label="Registered" value={selected.registrationDate ? new Date(selected.registrationDate).toLocaleDateString() : '—'} />
+              <Row label="Registered" value={renderDate(selected.registrationDate)} />
             </div>
             
-            {/* Status Section */}
             <div className="flex justify-between items-center mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
               <span className="text-slate-700 font-medium">Current Status</span>
-              <StatusBadge status={
-                ['visit completed', 'completed', 'visit_completed'].includes((selected.status || '').toLowerCase()) 
-                ? 'active' 
-                : selected.status
-              } />
+              <SmartBadge status={selected.status} /> {/* THE FIX */}
             </div>
           </div>
         )}
@@ -306,7 +304,6 @@ function Row({ label, value }) {
   );
 }
 
-// Smart Media Viewer to safely handle raw PDFs or Image Links
 function MediaViewer({ url, alt }) {
   if (!url) {
     return (
@@ -319,7 +316,6 @@ function MediaViewer({ url, alt }) {
     );
   }
 
-  // Detect if the file is a raw PDF
   const isPdf = url.toLowerCase().includes('.pdf') || url.startsWith('data:application/pdf');
 
   if (isPdf) {
@@ -335,14 +331,9 @@ function MediaViewer({ url, alt }) {
     );
   }
 
-  // Handle standard images / base64
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full h-full cursor-pointer" title="Click to view full size">
-      <img 
-        src={url} 
-        alt={alt} 
-        className="w-full h-36 object-contain rounded-md hover:opacity-80 transition-opacity bg-slate-50"
-      />
+      <img src={url} alt={alt} className="w-full h-36 object-contain rounded-md hover:opacity-80 transition-opacity bg-slate-50" />
     </a>
   );
 }
