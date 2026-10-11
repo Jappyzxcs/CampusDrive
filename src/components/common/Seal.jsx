@@ -1,4 +1,4 @@
-import sealImage from '../../assets/CampusDriveLogo.png';
+import sealImage from '/CampusDriveLogo.png';
 
 const SIZES = {
   sm: 'h-10 w-10',

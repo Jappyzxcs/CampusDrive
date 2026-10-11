@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/roboflow-api/:match*",
+      "destination": "https://serverless.roboflow.com/:match*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
