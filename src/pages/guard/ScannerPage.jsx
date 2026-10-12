@@ -13,14 +13,15 @@ import { VerificationResultCard } from '../../components/scanner/VerificationRes
 export default function ScannerPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [phase, setPhase] = useState('idle'); 
+  
+  const [phase, setPhase] = useState('scanning'); 
   const [result, setResult] = useState(null);
   
   const [scanTargetUI, setScanTargetUI] = useState('Student');
   const scanTargetRef = useRef('Student');
   
   const videoRef = useRef(null);
-  const isScanningRef = useRef(false);
+  const isScanningRef = useRef(true); 
   const workerRef = useRef(null);
   const vehiclesCacheRef = useRef([]);
 
@@ -29,22 +30,34 @@ export default function ScannerPage() {
   const [flagDetails, setFlagDetails] = useState('');
   const [isFlagging, setIsFlagging] = useState(false);
 
+  // 1. INIT FIREBASE CACHE
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'approved_vehicles'), (snap) => {
       vehiclesCacheRef.current = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     });
+    return () => unsubscribe();
+  }, []);
 
+  // 2. INIT TESSERACT
+  useEffect(() => {
     const initWorker = async () => {
-      workerRef.current = await createWorker('eng');
+      console.log("⚙️ Downloading Tesseract AI Model...");
+      const worker = await createWorker('eng');
+      await worker.setParameters({
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ', 
+        tessedit_pageseg_mode: '11' 
+      });
+      workerRef.current = worker;
+      console.log("✅ Tesseract Ready!");
     };
     initWorker();
 
     return () => {
-      unsubscribe();
       if (workerRef.current) workerRef.current.terminate();
     };
   }, []);
 
+  // 3. INIT CAMERA & FORCE LOOP
   useEffect(() => {
     let activeStream = null;
 
@@ -56,6 +69,11 @@ export default function ScannerPage() {
         
         if (videoRef.current) {
           videoRef.current.srcObject = activeStream;
+          videoRef.current.play().catch(e => console.error("Video play error:", e));
+          
+          isScanningRef.current = true;
+          console.log("🚀 Camera stream attached! Launching scan loop...");
+          setTimeout(() => processFrame(), 500);
         }
       } catch (error) {
         console.error("Error accessing camera:", error);
@@ -77,19 +95,18 @@ export default function ScannerPage() {
 
   const cleanOCRText = (rawText) => {
     let text = rawText.toUpperCase().replace(/\s+/g, '');
-    text = text.replace(/L8/g, 'LB');
+    
+    // Auto-correct common misreads
+    text = text.replace(/L8/g, 'LB')
+               .replace(/1B/g, 'LB')
+               .replace(/IB/g, 'LB');
 
-    const regex = /([A-Z]{2})([0-9OIZS]{4})/;
+    // THE FIX: Added 'C?' to make the letter C optional, matching both LB and LBC
+    const regex = /(LBC?)([0-9]{3,6})/;
     const match = text.match(regex);
 
     if (match) {
-      const letters = match[1]; 
-      const digits = match[2]
-        .replace(/O/g, '0')
-        .replace(/I/g, '1')
-        .replace(/Z/g, '2')
-        .replace(/S/g, '5');
-      return letters + digits; 
+      return match[1] + match[2]; 
     }
     return null; 
   };
@@ -109,14 +126,20 @@ export default function ScannerPage() {
 
     const video = videoRef.current;
     
-    if (video.videoWidth === 0) {
-      setTimeout(processFrame, 300);
+    if (video.readyState < 2 || video.videoWidth === 0) {
+      setTimeout(() => processFrame(), 200);
+      return;
+    }
+
+    if (!workerRef.current) {
+      console.log("⏳ Waiting for Tesseract to finish loading...");
+      setTimeout(() => processFrame(), 500);
       return;
     }
 
     const canvas = document.createElement('canvas');
-    const cropWidth = video.videoWidth * 0.6;
-    const cropHeight = video.videoHeight * 0.3;
+    const cropWidth = video.videoWidth * 0.7; 
+    const cropHeight = video.videoHeight * 0.4;
     const cropX = (video.videoWidth - cropWidth) / 2;
     const cropY = (video.videoHeight - cropHeight) / 2;
 
@@ -131,22 +154,27 @@ export default function ScannerPage() {
       const aiResult = await aiService.verifySticker(base64Frame);
 
       if (!aiResult.success || !aiResult.isDetected) {
-        setTimeout(processFrame, 400); 
+        console.log("🔍 Roboflow: No sticker found in frame... Retrying");
+        setTimeout(() => processFrame(), 200); 
         return;
       }
 
-      if (!workerRef.current) {
-        setTimeout(processFrame, 400);
-        return;
-      }
+      console.log("🎯 Roboflow: Sticker Detected! Running OCR...");
 
       const { data: { text } } = await workerRef.current.recognize(canvas);
       const cleanedText = cleanOCRText(text);
 
-      if (!cleanedText || cleanedText.length < 4) {
-        setTimeout(processFrame, 400);
+      console.log(`📝 OCR Raw Text: "${text.replace(/\n/g, ' ')}"`);
+      console.log(`✨ OCR Cleaned : "${cleanedText}"`);
+
+      // If it doesn't match our exact format, grab the next frame
+      if (!cleanedText) {
+        console.log("❌ Did not find 'LB' or 'LBC' serial format. Retrying...");
+        setTimeout(() => processFrame(), 200);
         return;
       }
+
+      console.log(`✅ SUCCESS! Valid Serial Extracted: ${cleanedText}. Verifying with Firebase...`);
 
       const vehicles = vehiclesCacheRef.current;
       const currentTarget = scanTargetRef.current;
@@ -162,7 +190,6 @@ export default function ScannerPage() {
       const today = new Date();
       today.setHours(0, 0, 0, 0); 
       
-      // THE FIX: Deep Hunting applied to the Scanner as well
       let orExp = matchedVehicle ? (matchedVehicle.orExpiry || matchedVehicle.nlpExtractedData?.orExpiry || null) : null;
       let licExp = matchedVehicle ? (matchedVehicle.licenseExpiry || matchedVehicle.nlpExtractedData?.licenseExpiry || null) : null;
 
@@ -170,7 +197,6 @@ export default function ScannerPage() {
         try {
           const targetPlate = (matchedVehicle.plateNumber || '').replace(/\s+/g, '').toUpperCase();
           
-          // Hunt in Main Vehicles
           const vSnap = await getDocs(collection(db, 'vehicles'));
           const vDoc = vSnap.docs.map(d => d.data()).find(v => (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
           if (vDoc) {
@@ -178,7 +204,6 @@ export default function ScannerPage() {
             licExp = licExp || vDoc.licenseExpiry || vDoc.nlpExtractedData?.licenseExpiry || null;
           }
 
-          // Hunt in Original Applications
           if (!orExp || !licExp) {
             const aSnap = await getDocs(collection(db, 'applications'));
             const aDoc = aSnap.docs.map(d => d.data()).find(a => (a.plateNumber || a.vehicleDetails?.plateNumber || '').replace(/\s+/g, '').toUpperCase() === targetPlate);
@@ -311,7 +336,7 @@ export default function ScannerPage() {
 
     } catch (error) {
       console.error("Verification Error:", error);
-      setTimeout(processFrame, 800);
+      setTimeout(() => processFrame(), 400); 
     }
   };
 
@@ -367,22 +392,11 @@ export default function ScannerPage() {
     setScanTargetUI(target);
   }
 
-  function toggleScan() {
-    if (phase === 'scanning') {
-      isScanningRef.current = false;
-      setPhase('idle');
-    } else {
-      isScanningRef.current = true;
-      setPhase('scanning');
-      setResult(null);
-      processFrame(); 
-    }
-  }
-
   function handleReset() {
-    isScanningRef.current = false;
-    setPhase('idle');
     setResult(null);
+    setPhase('scanning');
+    isScanningRef.current = true;
+    setTimeout(() => processFrame(), 300); 
   }
 
   return (
@@ -446,18 +460,6 @@ export default function ScannerPage() {
                 Scanning {scanTargetUI}s...
               </div>
             )}
-          </div>
-
-          <div className="mt-6">
-            <button
-              onClick={toggleScan}
-              className={`flex w-full items-center justify-center gap-3 rounded-2xl py-5 text-xl font-bold text-white shadow-[0_8px_20px_rgba(37,99,235,0.4)] transition-all ${
-                phase === 'scanning' ? 'bg-red-600 active:bg-red-700' : 'bg-blue-600 active:bg-blue-700'
-              }`}
-            >
-              <Icon name={phase === 'scanning' ? 'x' : 'camera'} className="h-7 w-7" />
-              {phase === 'scanning' ? 'Stop Scanning' : `Start Auto-Scan`}
-            </button>
           </div>
         </div>
       )}
