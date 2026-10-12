@@ -136,7 +136,8 @@ export default function VehicleManagementPage() {
       .filter(
         (v) =>
           v.plateNumber?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          v.ownerName?.toLowerCase().includes(debouncedSearch.toLowerCase()),
+          v.ownerName?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+          v.stickerSerial?.toLowerCase().includes(debouncedSearch.toLowerCase()), // Allow searching by serial
       )
       .filter((v) => {
         if (!filters.status) return true;
@@ -157,6 +158,7 @@ export default function VehicleManagementPage() {
 
   const columns = [
     { key: 'plateNumber', header: 'Plate', sortable: true, render: (row) => <span className="font-semibold text-slate-800">{row.plateNumber}</span> },
+    { key: 'stickerSerial', header: 'Serial No.', sortable: true, render: (row) => <span className="font-mono text-sm font-bold text-slate-700">{row.stickerSerial || '—'}</span> },
     { key: 'ownerName', header: 'Owner', sortable: true },
     { key: 'registrantType', header: 'Role', render: (row) => <span className="text-sm font-medium text-slate-600">{row.registrantType || 'Student'}</span> },
     { key: 'type', header: 'Type', sortable: true },
@@ -213,7 +215,7 @@ export default function VehicleManagementPage() {
         <SearchFilterBar
           searchValue={search}
           onSearchChange={setSearch}
-          searchPlaceholder="Search by plate or owner…"
+          searchPlaceholder="Search by plate, serial, or owner…"
           filters={[
             { key: 'status', label: 'Status', options: STATUS_OPTIONS },
             { key: 'registrantType', label: 'Role', options: ROLE_OPTIONS },
@@ -279,6 +281,7 @@ export default function VehicleManagementPage() {
 
             <div className="flex flex-col gap-1 mt-2">
               <Row label="Owner" value={`${selected.ownerName} (${selected.registrantType || 'Student'})`} />
+              <Row label="Serial No." value={<span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700">{selected.stickerSerial || 'Pending Issuance'}</span>} />
               <Row label="Make / Model" value={`${selected.make || selected.vehicleDetails?.make || ''} ${selected.model || selected.vehicleDetails?.model || ''}`.trim() || '—'} />
               <Row label="Type" value={selected.type || selected.vehicleDetails?.vehicleType || '—'} />
               <Row label="Registered" value={renderDate(selected.registrationDate)} />
