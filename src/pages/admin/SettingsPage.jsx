@@ -41,6 +41,7 @@ export default function SettingsPage() {
   // Backup & Export States
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [csvCollection, setCsvCollection] = useState('vehicles');
+  const [exportMonth, setExportMonth] = useState(''); // State for the CSV month filter
   const [isExportingCsv, setIsExportingCsv] = useState(false);
 
   // Fetch settings from Firebase on load
@@ -85,10 +86,12 @@ export default function SettingsPage() {
 
   const handleCsvExport = async () => {
     setIsExportingCsv(true);
-    showToast(`Generating Excel spreadsheet for ${csvCollection}...`, { type: 'success' });
+    const periodLabel = exportMonth ? `for ${exportMonth}` : 'All Time';
+    showToast(`Generating Excel spreadsheet for ${csvCollection} (${periodLabel})...`, { type: 'success' });
     
     try {
-      await backupService.exportCollectionToCSV(csvCollection);
+      // Pass the selected month to the backup service 
+      await backupService.exportCollectionToCSV(csvCollection, exportMonth);
       showToast('Spreadsheet downloaded successfully!', { type: 'success' });
     } catch (error) {
       showToast(`Failed to export spreadsheet. Ensure the collection has data.`, { type: 'danger' });
@@ -186,7 +189,7 @@ export default function SettingsPage() {
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 border-t border-slate-100 pt-6">
             
             {/* The Excel / CSV Export Area */}
-            <div className="flex w-full flex-1 items-center gap-3">
+            <div className="flex w-full flex-1 flex-wrap items-center gap-3">
               <select 
                 value={csvCollection}
                 onChange={(e) => setCsvCollection(e.target.value)}
@@ -199,6 +202,14 @@ export default function SettingsPage() {
                 <option value="users">User Accounts</option>
               </select>
               
+              <input 
+                type="month"
+                value={exportMonth}
+                onChange={(e) => setExportMonth(e.target.value)}
+                title="Select a specific month to export, or leave blank for all records"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/20 sm:w-auto"
+              />
+
               <button
                 onClick={handleCsvExport}
                 disabled={isExportingCsv}

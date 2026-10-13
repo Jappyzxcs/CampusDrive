@@ -23,6 +23,7 @@ export default function EntryLogsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [result, setResult] = useState('');
+  const [month, setMonth] = useState(''); // State for month filter
   const debouncedSearch = useDebouncedValue(search);
 
   // Fetch live entry logs from Firebase
@@ -45,11 +46,43 @@ export default function EntryLogsPage() {
     fetchLogs();
   }, []);
 
+  // Dynamically generate available month options based on the actual logs
+  const monthOptions = useMemo(() => {
+    const months = new Set();
+    logs.forEach(l => {
+      if (l.timestamp) {
+        const d = new Date(l.timestamp);
+        if (!isNaN(d)) {
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          months.add(`${yyyy}-${mm}`);
+        }
+      }
+    });
+    
+    const sorted = Array.from(months).sort().reverse();
+    return sorted.map(m => {
+      const [y, mo] = m.split('-');
+      const date = new Date(y, parseInt(mo) - 1);
+      return { 
+        value: m, 
+        label: date.toLocaleDateString('default', { month: 'long', year: 'numeric' }) 
+      };
+    });
+  }, [logs]);
+
   const filtered = useMemo(() => {
     return logs
       .filter((l) => (l.plateNumber || '').toLowerCase().includes(debouncedSearch.toLowerCase()))
-      .filter((l) => !result || l.result === result);
-  }, [logs, debouncedSearch, result]);
+      .filter((l) => !result || l.result === result)
+      .filter((l) => {
+        if (!month) return true; // Show all if no month is selected
+        const d = new Date(l.timestamp);
+        if (isNaN(d)) return false;
+        const lMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return lMonth === month;
+      });
+  }, [logs, debouncedSearch, result, month]);
 
   const columns = [
     { key: 'timestamp', header: 'Time', render: (row) => new Date(row.timestamp).toLocaleString(), sortable: true },
@@ -61,7 +94,7 @@ export default function EntryLogsPage() {
         let label = row.entryType;
         let colorClass = 'bg-blue-100 text-blue-800';
 
-        // THE FIX: Intercept unknown plates and unregistered results before they default to "Registered"
+        // Intercept unknown plates and unregistered results before they default to "Registered"
         if (row.result === 'unregistered' || row.plateNumber === 'UNKNOWN' || !row.plateNumber) {
            label = 'Unknown / Unregistered';
            colorClass = 'bg-slate-100 text-slate-600';
@@ -98,9 +131,15 @@ export default function EntryLogsPage() {
           searchValue={search}
           onSearchChange={setSearch}
           searchPlaceholder="Search by plate number…"
-          filters={[{ key: 'result', label: 'Result', options: RESULT_OPTIONS }]}
-          activeFilters={{ result }}
-          onFilterChange={(_, value) => setResult(value)}
+          filters={[
+            { key: 'result', label: 'Result', options: RESULT_OPTIONS },
+            { key: 'month', label: 'Month', options: monthOptions } // Integrated dynamic month dropdown
+          ]}
+          activeFilters={{ result, month }} // Pass active states
+          onFilterChange={(key, value) => {
+            if (key === 'result') setResult(value);
+            if (key === 'month') setMonth(value);
+          }}
         />
         <DataTable columns={columns} rows={filtered} isLoading={isLoading} />
       </DashboardCard>
