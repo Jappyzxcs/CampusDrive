@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, setPersistence, indexedDBLocalPersistence } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Replace these with your actual Firebase project settings
@@ -13,5 +13,16 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db = getFirestore(app);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Force the app to remember the guard indefinitely
+setPersistence(auth, indexedDBLocalPersistence)
+  .then(() => {
+    console.log("Local persistence enabled: Guard will stay logged in.");
+  })
+  .catch((error) => {
+    console.error("Auth persistence error:", error);
+  });
+
+export { auth, db };

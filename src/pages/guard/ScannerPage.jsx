@@ -9,6 +9,7 @@ import { aiService } from '../../services/aiService';
 import { useAuth } from '../../context/AuthContext';
 import { flaggingService } from '../../services/flaggingService';
 import { VerificationResultCard } from '../../components/scanner/VerificationResultCard';
+import { Camera } from '@capacitor/camera';
 
 export default function ScannerPage() {
   const { user } = useAuth();
@@ -63,6 +64,12 @@ export default function ScannerPage() {
 
     async function startCamera() {
       try {
+        try {
+          await Camera.requestPermissions();
+        } catch (permError) {
+          console.log("Permission request skipped (running on web or failed):", permError);
+        }
+
         activeStream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' } 
         });
@@ -77,7 +84,7 @@ export default function ScannerPage() {
         }
       } catch (error) {
         console.error("Error accessing camera:", error);
-        showToast('Camera access denied. Please check your browser permissions.', { type: 'danger' });
+        showToast('Camera blocked. Please open Android Settings > Apps > CampusDrive and allow Camera access.', { type: 'danger' });
       }
     }
 
@@ -96,12 +103,10 @@ export default function ScannerPage() {
   const cleanOCRText = (rawText) => {
     let text = rawText.toUpperCase().replace(/\s+/g, '');
     
-    // Auto-correct common misreads
     text = text.replace(/L8/g, 'LB')
                .replace(/1B/g, 'LB')
                .replace(/IB/g, 'LB');
 
-    // THE FIX: Added 'C?' to make the letter C optional, matching both LB and LBC
     const regex = /(LBC?)([0-9]{3,6})/;
     const match = text.match(regex);
 
@@ -132,11 +137,11 @@ export default function ScannerPage() {
     }
 
     if (!workerRef.current) {
-      console.log("⏳ Waiting for Tesseract to finish loading...");
       setTimeout(() => processFrame(), 500);
       return;
     }
 
+    // 1. YOUR ORIGINAL CROP (This gave Tesseract the whitespace it needed to be accurate)
     const canvas = document.createElement('canvas');
     const cropWidth = video.videoWidth * 0.7; 
     const cropHeight = video.videoHeight * 0.4;
@@ -153,38 +158,49 @@ export default function ScannerPage() {
       
       const aiResult = await aiService.verifySticker(base64Frame);
 
+      // If YOLOv8 doesn't see a sticker, abort and try again
       if (!aiResult.success || !aiResult.isDetected) {
-        console.log("🔍 Roboflow: No sticker found in frame... Retrying");
         setTimeout(() => processFrame(), 200); 
         return;
       }
 
-      console.log("🎯 Roboflow: Sticker Detected! Running OCR...");
-
+      // 2. YOUR ORIGINAL OCR CAPTURE (Scanning the whole center crop)
       const { data: { text } } = await workerRef.current.recognize(canvas);
       const cleanedText = cleanOCRText(text);
 
-      console.log(`📝 OCR Raw Text: "${text.replace(/\n/g, ' ')}"`);
-      console.log(`✨ OCR Cleaned : "${cleanedText}"`);
-
-      // If it doesn't match our exact format, grab the next frame
       if (!cleanedText) {
-        console.log("❌ Did not find 'LB' or 'LBC' serial format. Retrying...");
         setTimeout(() => processFrame(), 200);
         return;
       }
 
-      console.log(`✅ SUCCESS! Valid Serial Extracted: ${cleanedText}. Verifying with Firebase...`);
-
+      // 3. THE NEW STRICT MATCHING LOGIC (Security fix applied to your accurate OCR)
       const vehicles = vehiclesCacheRef.current;
       const currentTarget = scanTargetRef.current;
 
-      const matchedVehicle = vehicles.find(v => {
-        if (!v.stickerSerial) return false;
-        const vType = v.registrantType || 'Student'; 
-        if (vType.toLowerCase() !== currentTarget.toLowerCase()) return false;
-        return levenshtein.get(cleanedText, v.stickerSerial.toUpperCase()) <= 2;
+      const normalizeSerial = (val) => String(val || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const targetSerial = normalizeSerial(cleanedText);
+
+      const eligibleVehicles = vehicles.filter(v => {
+        const vType = v.registrantType || 'Student';
+        return vType.toLowerCase() === currentTarget.toLowerCase();
       });
+
+      // Require an exact match first
+      let matchedVehicle = eligibleVehicles.find(
+        v => normalizeSerial(v.stickerSerial) === targetSerial
+      );
+      let isFuzzyMatch = false;
+
+      // Only use fuzzy logic to flag for manual review, NEVER auto-approve
+      if (!matchedVehicle) {
+        const nearMatch = eligibleVehicles.find(
+          v => levenshtein.get(targetSerial, normalizeSerial(v.stickerSerial)) === 1
+        );
+        if (nearMatch) {
+          matchedVehicle = nearMatch;
+          isFuzzyMatch = true;
+        }
+      }
 
       let finalResult;
       const today = new Date();
@@ -193,6 +209,7 @@ export default function ScannerPage() {
       let orExp = matchedVehicle ? (matchedVehicle.orExpiry || matchedVehicle.nlpExtractedData?.orExpiry || null) : null;
       let licExp = matchedVehicle ? (matchedVehicle.licenseExpiry || matchedVehicle.nlpExtractedData?.licenseExpiry || null) : null;
 
+      // ... Deep date search fallback
       if (matchedVehicle && (!orExp || !licExp)) {
         try {
           const targetPlate = (matchedVehicle.plateNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -229,6 +246,7 @@ export default function ScannerPage() {
         if (licDate && licDate < today) isLicenseExpired = true;
       }
       
+      // ... Result handling
       if (!matchedVehicle) {
         const pendingQuery = query(collection(db, 'vehicles'), where('stickerSerial', '==', cleanedText));
         const pendingSnap = await getDocs(pendingQuery);
@@ -254,7 +272,7 @@ export default function ScannerPage() {
             owner: 'N/A', 
             make: 'N/A', 
             serial: cleanedText, 
-            alert: `No record found for this sticker. Possible counterfeit.` 
+            alert: `No record found for serial "${cleanedText}". Possible counterfeit.` 
           };
         }
       } else if (matchedVehicle.accreditationStatus === 'Revoked' || matchedVehicle.status === 'revoked') {
@@ -272,10 +290,9 @@ export default function ScannerPage() {
           licenseExpiry: licExp 
         };
       } else if (matchedVehicle.accreditationStatus === 'Expired' || matchedVehicle.status === 'expired' || isOrExpired || isLicenseExpired) {
-        
         let expireReason = 'Institutional accreditation expired.';
         if (isOrExpired) expireReason = 'LTO Official Receipt has expired. Entry denied.';
-        else if (isLicenseExpired) expireReason = 'Driver\'s License has expired. Entry denied.';
+        else if (isLicenseExpired) expireReason = "Driver's License has expired. Entry denied.";
 
         finalResult = { 
           id: matchedVehicle.id,
@@ -285,6 +302,20 @@ export default function ScannerPage() {
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
           alert: expireReason,
+          orExpiry: orExp,
+          licenseExpiry: licExp
+        };
+      } else if (isFuzzyMatch) {
+        // Enforce manual guard check when OCR is off by one character
+        finalResult = {
+          id: matchedVehicle.id,
+          status: 'under_review',
+          plateNumber: matchedVehicle.plateNumber || 'N/A',
+          owner: `${matchedVehicle.ownerName || 'Authorized User'} (${matchedVehicle.registrantType || 'Student'})`,
+          make: matchedVehicle.vehicleMake || matchedVehicle.make || 'N/A',
+          serial: matchedVehicle.stickerSerial,
+          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null,
+          alert: `Scanned "${cleanedText}" near recorded "${matchedVehicle.stickerSerial}". Inspect decal manually.`,
           orExpiry: orExp,
           licenseExpiry: licExp
         };
@@ -466,7 +497,6 @@ export default function ScannerPage() {
 
       {phase === 'result' && result && (
         <div className="flex flex-1 flex-col px-4 pb-4 animate-in fade-in zoom-in-95 duration-200 overflow-y-auto">
-          
           <VerificationResultCard 
             result={result} 
             onFlagClick={() => setIsFlagModalOpen(true)} 
@@ -484,7 +514,6 @@ export default function ScannerPage() {
       {isFlagModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            
             <div className="mb-5 flex items-center justify-between">
               <h3 className="text-lg font-bold text-slate-900 font-serif">Report Vehicle Offense</h3>
               <button onClick={() => setIsFlagModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -551,7 +580,6 @@ export default function ScannerPage() {
                 Submit Report
               </button>
             </div>
-            
           </div>
         </div>
       )}

@@ -11,7 +11,6 @@ import { useToast } from '../../context/ToastContext';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES } from '../../constants/roles';
 
-// Database imports
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
@@ -32,7 +31,6 @@ const ROLE_OPTIONS = [
   { value: 'Faculty', label: 'Faculty' },
 ];
 
-// THE FIX: Premium SmartBadge to prevent crashes and fix the ugly revoked styling
 function SmartBadge({ status }) {
   const s = (status || '').toLowerCase();
   
@@ -44,7 +42,7 @@ function SmartBadge({ status }) {
   if (s === 'under_review') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-purple-100 text-purple-900 border border-purple-200 uppercase tracking-wider shadow-sm">Manual Review</span>;
   if (s === 'rejected') return <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-100 text-slate-900 border border-slate-200 uppercase tracking-wider shadow-sm">Rejected</span>;
   
-  return <StatusBadge status={status} />; // Safe fallback
+  return <StatusBadge status={status} />; 
 }
 
 export default function VehicleManagementPage() {
@@ -56,6 +54,7 @@ export default function VehicleManagementPage() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: '', type: '', registrantType: '' });
   const [selected, setSelected] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const debouncedSearch = useDebouncedValue(search);
 
@@ -70,11 +69,20 @@ export default function VehicleManagementPage() {
         if (isMounted) setAppDocs(null);
         return;
       }
-      if (selected.documentUrls?.license) {
-        if (isMounted) setAppDocs(selected.documentUrls);
+      
+      // THE FIX: Do not short-circuit unless we confirm the fast cache has ALL 4 documents.
+      const vDocs = selected.documentUrls || {};
+      const hasVehicle = !!vDocs.vehiclePhoto;
+      const hasLicense = !!vDocs.license;
+      const hasOR = !!(vDocs.or || vDocs.OR || vDocs.orDocument || vDocs.officialReceipt);
+      const hasCR = !!(vDocs.cr || vDocs.CR || vDocs.crDocument || vDocs.certificateOfRegistration);
+
+      if (hasVehicle && hasLicense && hasOR && hasCR) {
+        if (isMounted) setAppDocs(vDocs);
         return;
       }
 
+      // If anything is missing, fetch the original application to hunt for the missing files
       if (isMounted) setIsLoadingDocs(true);
       
       try {
@@ -122,7 +130,6 @@ export default function VehicleManagementPage() {
     return () => { isMounted = false; };
   }, [selected]);
 
-  // THE FIX: Array mapping safety to prevent .filter() crashes
   const vehicles = useMemo(() => {
     return Array.isArray(realVehicles) ? realVehicles : [];
   }, [realVehicles]);
@@ -137,7 +144,7 @@ export default function VehicleManagementPage() {
         (v) =>
           v.plateNumber?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
           v.ownerName?.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-          v.stickerSerial?.toLowerCase().includes(debouncedSearch.toLowerCase()), // Allow searching by serial
+          v.stickerSerial?.toLowerCase().includes(debouncedSearch.toLowerCase()), 
       )
       .filter((v) => {
         if (!filters.status) return true;
@@ -162,7 +169,7 @@ export default function VehicleManagementPage() {
     { key: 'ownerName', header: 'Owner', sortable: true },
     { key: 'registrantType', header: 'Role', render: (row) => <span className="text-sm font-medium text-slate-600">{row.registrantType || 'Student'}</span> },
     { key: 'type', header: 'Type', sortable: true },
-    { key: 'status', header: 'Status', render: (row) => <SmartBadge status={row.status} /> }, // THE FIX
+    { key: 'status', header: 'Status', render: (row) => <SmartBadge status={row.status} /> }, 
   ];
 
   const handleRevoke = async () => {
@@ -182,6 +189,7 @@ export default function VehicleManagementPage() {
     }
   };
 
+  // THE FIX: Check both appDocs (from applications) AND vehicle.documentUrls (from vehicles)
   const getVehiclePhoto = (vehicle) => {
     if (!vehicle) return null;
     return vehicle.vehicleImageUrl || appDocs?.vehiclePhoto || vehicle.documentUrls?.vehiclePhoto || null;
@@ -192,7 +200,16 @@ export default function VehicleManagementPage() {
     return appDocs?.license || vehicle.documentUrls?.license || null;
   };
 
-  // Safe date parser
+  const getOrPhoto = (vehicle) => {
+    if (!vehicle) return null;
+    return appDocs?.or || vehicle.documentUrls?.or || appDocs?.OR || vehicle.documentUrls?.OR || appDocs?.orDocument || vehicle.documentUrls?.orDocument || appDocs?.officialReceipt || vehicle.documentUrls?.officialReceipt || null;
+  };
+
+  const getCrPhoto = (vehicle) => {
+    if (!vehicle) return null;
+    return appDocs?.cr || vehicle.documentUrls?.cr || appDocs?.CR || vehicle.documentUrls?.CR || appDocs?.crDocument || vehicle.documentUrls?.crDocument || appDocs?.certificateOfRegistration || vehicle.documentUrls?.certificateOfRegistration || null;
+  };
+
   const renderDate = (dateVal) => {
     if (!dateVal) return '—';
     try {
@@ -231,7 +248,7 @@ export default function VehicleManagementPage() {
         isOpen={Boolean(selected)} 
         onClose={() => !isSubmitting && setSelected(null)} 
         title={`Security Check: ${selected?.plateNumber}`}
-        size="lg"
+        size="xl"
         footer={
           selected && selected.status !== 'revoked' && role !== ROLES.BAO && (
             <div className="flex justify-end w-full border-t border-slate-100 pt-4 mt-2">
@@ -250,33 +267,10 @@ export default function VehicleManagementPage() {
         {selected && (
           <div className="flex flex-col gap-5 text-sm">
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="bg-slate-100 border-b border-slate-200 py-1.5 text-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Vehicle</span>
-                </div>
-                <div className="flex-1 flex items-center justify-center p-3 bg-white min-h-[160px]">
-                  <MediaViewer url={getVehiclePhoto(selected)} alt={`Vehicle ${selected.plateNumber}`} />
-                </div>
-              </div>
-
-              <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="bg-slate-100 border-b border-slate-200 py-1.5 text-center">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Driver's License</span>
-                </div>
-                <div className="flex-1 flex items-center justify-center p-3 bg-white min-h-[160px]">
-                  {isLoadingDocs ? (
-                    <div className="py-6 text-center text-slate-400 flex flex-col items-center gap-2">
-                      <svg className="w-6 h-6 animate-spin text-slate-300" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Retrieving...</span>
-                    </div>
-                  ) : (
-                    <MediaViewer url={getLicensePhoto(selected)} alt={`License for ${selected.ownerName}`} />
-                  )}
-                </div>
-              </div>
+              <DocumentCard title="Vehicle" url={getVehiclePhoto(selected)} alt="Vehicle" isLoading={isLoadingDocs} onZoom={setZoomedImage} />
+              <DocumentCard title="Driver's License" url={getLicensePhoto(selected)} alt="License" isLoading={isLoadingDocs} onZoom={setZoomedImage} />
+              <DocumentCard title="Official Receipt (OR)" url={getOrPhoto(selected)} alt="OR Document" isLoading={isLoadingDocs} onZoom={setZoomedImage} />
+              <DocumentCard title="Cert. of Registration (CR)" url={getCrPhoto(selected)} alt="CR Document" isLoading={isLoadingDocs} onZoom={setZoomedImage} />
             </div>
 
             <div className="flex flex-col gap-1 mt-2">
@@ -289,11 +283,51 @@ export default function VehicleManagementPage() {
             
             <div className="flex justify-between items-center mt-2 p-3 bg-slate-50 rounded-lg border border-slate-100">
               <span className="text-slate-700 font-medium">Current Status</span>
-              <SmartBadge status={selected.status} /> {/* THE FIX */}
+              <SmartBadge status={selected.status} /> 
             </div>
           </div>
         )}
       </Modal>
+
+      {zoomedImage && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 p-4 animate-in fade-in duration-200 cursor-zoom-out"
+          onClick={() => setZoomedImage(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 p-2 bg-white/10 rounded-full hover:bg-white/20 text-white transition-colors"
+            onClick={() => setZoomedImage(null)}
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <img src={zoomedImage} className="max-w-full max-h-full object-contain shadow-2xl rounded-sm" alt="Fullscreen zoom" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DocumentCard({ title, url, alt, isLoading, onZoom }) {
+  return (
+    <div className="flex flex-col bg-slate-50 rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="bg-slate-100 border-b border-slate-200 py-1.5 text-center">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</span>
+      </div>
+      <div className="flex-1 flex items-center justify-center p-3 bg-white min-h-[160px]">
+        {isLoading ? (
+          <div className="py-6 text-center text-slate-400 flex flex-col items-center gap-2">
+            <svg className="w-6 h-6 animate-spin text-slate-300" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-[10px] font-bold uppercase tracking-wider">Retrieving...</span>
+          </div>
+        ) : (
+          <MediaViewer url={url} alt={alt} onZoom={onZoom} />
+        )}
+      </div>
     </div>
   );
 }
@@ -307,7 +341,7 @@ function Row({ label, value }) {
   );
 }
 
-function MediaViewer({ url, alt }) {
+function MediaViewer({ url, alt, onZoom }) {
   if (!url) {
     return (
       <div className="py-6 text-center text-slate-400 flex flex-col items-center gap-2">
@@ -335,8 +369,12 @@ function MediaViewer({ url, alt }) {
   }
 
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="block w-full h-full cursor-pointer" title="Click to view full size">
+    <div 
+      onClick={() => onZoom(url)} 
+      className="block w-full h-full cursor-zoom-in" 
+      title="Click to view full size"
+    >
       <img src={url} alt={alt} className="w-full h-36 object-contain rounded-md hover:opacity-80 transition-opacity bg-slate-50" />
-    </a>
+    </div>
   );
 }
