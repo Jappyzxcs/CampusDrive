@@ -56,6 +56,7 @@ export default function VehicleManagementPage() {
   const [selected, setSelected] = useState(null);
   const [zoomedImage, setZoomedImage] = useState(null); 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null); 
   const debouncedSearch = useDebouncedValue(search);
 
   const [appDocs, setAppDocs] = useState(null);
@@ -70,7 +71,6 @@ export default function VehicleManagementPage() {
         return;
       }
       
-      // THE FIX: Do not short-circuit unless we confirm the fast cache has ALL 4 documents.
       const vDocs = selected.documentUrls || {};
       const hasVehicle = !!vDocs.vehiclePhoto;
       const hasLicense = !!vDocs.license;
@@ -82,7 +82,6 @@ export default function VehicleManagementPage() {
         return;
       }
 
-      // If anything is missing, fetch the original application to hunt for the missing files
       if (isMounted) setIsLoadingDocs(true);
       
       try {
@@ -172,15 +171,15 @@ export default function VehicleManagementPage() {
     { key: 'status', header: 'Status', render: (row) => <SmartBadge status={row.status} /> }, 
   ];
 
-  const handleRevoke = async () => {
+  const executeRevoke = async () => {
     if (!selected || selected.status === 'revoked') return;
-    if (!window.confirm(`Are you sure you want to revoke campus access for ${selected.plateNumber}?`)) return;
     
     setIsSubmitting(true);
     try {
       await applicationService.updateVehicleStatus(selected.id, 'revoked');
       showToast(`Access revoked for ${selected.plateNumber}.`, { type: 'success' });
       setSelected(null);
+      setConfirmAction(null);
       if (reload) await reload();
     } catch (error) {
       showToast('Failed to update vehicle status.', { type: 'danger' });
@@ -189,7 +188,23 @@ export default function VehicleManagementPage() {
     }
   };
 
-  // THE FIX: Check both appDocs (from applications) AND vehicle.documentUrls (from vehicles)
+  const executeUnrevoke = async () => {
+    if (!selected || selected.status !== 'revoked') return;
+    
+    setIsSubmitting(true);
+    try {
+      await applicationService.updateVehicleStatus(selected.id, 'active');
+      showToast(`Campus access restored for ${selected.plateNumber}.`, { type: 'success' });
+      setSelected(null);
+      setConfirmAction(null);
+      if (reload) await reload();
+    } catch (error) {
+      showToast('Failed to restore vehicle status.', { type: 'danger' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const getVehiclePhoto = (vehicle) => {
     if (!vehicle) return null;
     return vehicle.vehicleImageUrl || appDocs?.vehiclePhoto || vehicle.documentUrls?.vehiclePhoto || null;
@@ -246,20 +261,74 @@ export default function VehicleManagementPage() {
 
       <Modal 
         isOpen={Boolean(selected)} 
-        onClose={() => !isSubmitting && setSelected(null)} 
+        onClose={() => {
+          if (!isSubmitting) {
+            setSelected(null);
+            setConfirmAction(null);
+          }
+        }} 
         title={`Security Check: ${selected?.plateNumber}`}
         size="xl"
         footer={
-          selected && selected.status !== 'revoked' && role !== ROLES.BAO && (
-            <div className="flex justify-end w-full border-t border-slate-100 pt-4 mt-2">
-              <button 
-                type="button" 
-                onClick={handleRevoke} 
-                disabled={isSubmitting}
-                className="rounded-md bg-danger-50 px-4 py-2 text-sm font-semibold text-danger-700 hover:bg-danger-100 disabled:opacity-50 transition-colors"
-              >
-                {isSubmitting ? 'Revoking...' : 'Revoke Campus Access'}
-              </button>
+          selected && role !== ROLES.BAO && (
+            <div className="flex items-center justify-between w-full border-t border-slate-100 pt-4 mt-2">
+              {confirmAction ? (
+                <>
+                  <span className="text-xs font-medium text-slate-700">
+                    {confirmAction === 'revoke'
+                      ? `Are you sure you want to revoke access for ${selected.plateNumber}?`
+                      : `Are you sure you want to restore access for ${selected.plateNumber}?`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction(null)}
+                      disabled={isSubmitting}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmAction === 'revoke' ? executeRevoke : executeUnrevoke}
+                      disabled={isSubmitting}
+                      className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm disabled:opacity-50 transition-colors ${
+                        confirmAction === 'revoke'
+                          ? 'bg-rose-600 hover:bg-rose-700'
+                          : 'bg-emerald-600 hover:bg-emerald-700'
+                      }`}
+                    >
+                      {isSubmitting
+                        ? 'Processing...'
+                        : confirmAction === 'revoke'
+                        ? 'Confirm Revocation'
+                        : 'Confirm Restore'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-end w-full">
+                  {selected.status === 'revoked' ? (
+                    <button 
+                      type="button" 
+                      onClick={() => setConfirmAction('unrevoke')} 
+                      disabled={isSubmitting}
+                      className="rounded-md bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 transition-colors"
+                    >
+                      Restore Access (Unrevoke)
+                    </button>
+                  ) : (
+                    <button 
+                      type="button" 
+                      onClick={() => setConfirmAction('revoke')} 
+                      disabled={isSubmitting}
+                      className="rounded-md bg-danger-50 px-4 py-2 text-sm font-semibold text-danger-700 hover:bg-danger-100 disabled:opacity-50 transition-colors"
+                    >
+                      Revoke Campus Access
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         }

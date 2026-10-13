@@ -14,6 +14,7 @@ const testDataset = [
   { filename: 'license_id5', expectedName: 'LERIOS, JEFFERSON LLOBIT', expectedDate: '2033/07/22' },
   { filename: 'license_id6', expectedName: 'SORIANO, DAVE IAN LOUIS PIAMONTE', expectedDate: '2030/01/26' },
   { filename: 'license_id7', expectedName: 'FAUSTINO, MA. ANGELICA SISON', expectedDate: '2030/12/25' },
+  { filename: 'license_id8', expectedName: 'GULAY, CRISANTO FLORENTINO', expectedDate: '2032/11/01' },
 
   // --- CERTIFICATES OF REGISTRATION / CR (Extracting Name ONLY) ---
   { filename: 'espinelicr', expectedName: 'MARIA FE FELIPE ESPINELI' },
@@ -22,6 +23,7 @@ const testDataset = [
   { filename: 'jpcr',       expectedName: 'JOHN PAUL CABALLES EMPALMADO' },
   { filename: 'seancr',     expectedName: 'HERBERT LAUZON BARROZA' },
   { filename: 'yadaocr',    expectedName: 'JAMES ADRAQUE YADAO' },
+  { filename: 'gulaycr', expectedName: 'JOHN PAULO LOPEZ MARIANO' },
 
   // --- OFFICIAL RECEIPTS / OR (Extracting Expiry Date ONLY) ---
   { filename: 'espinelior', expectedDate: '12/1/2025' },
@@ -29,7 +31,8 @@ const testDataset = [
   { filename: 'jeffor',     expectedDate: '08/08/2027' },
   { filename: 'jpor',       expectedDate: '04/08/2029' },
   { filename: 'seanor',     expectedDate: '04/01/2027' },
-  { filename: 'yadaoor',    expectedDate: '04/08/2026' }
+  { filename: 'yadaoor',    expectedDate: '04/08/2026' },
+  { filename: 'gulayor',    expectedDate: '03/08/2029' }
 ];
 
 // Helper to find the file regardless of extension

@@ -12,7 +12,7 @@ export const flaggingService = {
     const vehicleData = vSnap.data();
     const currentCount = vehicleData.offenseCount || 0;
     
-    // 🛠️ THE FIX: Deep search for ownerId to handle older test data
+    // Deep search for ownerId to handle older test data
     let ownerId = vehicleData.ownerId || vehicleData.userId;
     if (!ownerId) {
       const mainSnap = await getDoc(doc(db, 'vehicles', vehicleId));
@@ -30,13 +30,15 @@ export const flaggingService = {
 
     const newCount = currentCount + 1;
     const updates = { offenseCount: newCount };
-    const displayReason = reason === 'Others' && details ? details : reason;
+    
+    // THE FIX: Check for "Other Violation" instead of just "Others"
+    const displayReason = (reason === 'Other Violation' || reason === 'Others') && details ? details : reason;
     
     if (newCount >= 3) {
       // 🔴 AUTO-REVOKED (3 Strikes)
       updates.accreditationStatus = 'Revoked';
       updates.status = 'revoked';
-      updates.revokedDate = new Date().toISOString(); // <-- ADDED FOR AUDIT TRAIL
+      updates.revokedDate = new Date().toISOString(); 
       updates.revokeReason = `Automatically revoked (3 strikes). Last violation: ${displayReason}`;
 
       const cleanPlate = (vehicleData.plateNumber || '').replace(/\s+/g, '').toUpperCase();
@@ -88,7 +90,7 @@ export const flaggingService = {
       accreditationStatus: 'Revoked', 
       status: 'revoked', 
       revokeReason: reason,
-      revokedDate: new Date().toISOString() // <-- ADDED FOR AUDIT TRAIL
+      revokedDate: new Date().toISOString() 
     };
     
     await updateDoc(doc(db, 'approved_vehicles', vehicleId), updates);
