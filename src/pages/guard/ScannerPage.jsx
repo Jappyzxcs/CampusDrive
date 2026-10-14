@@ -260,6 +260,7 @@ export default function ScannerPage() {
             owner: `${pendingVehicle.ownerName || 'Unknown'} (${pendingVehicle.registrantType || 'Student'})`, 
             make: `${pendingVehicle.make || ''} ${pendingVehicle.model || ''}`.trim() || 'N/A', 
             serial: cleanedText, 
+            vehicleImage: pendingVehicle.vehicleImageUrl || pendingVehicle.imageUrl || pendingVehicle.photoUrl || null,
             alert: `Sticker found, but vehicle application is still PENDING. Entry denied.`,
             orExpiry: pendingVehicle.orExpiry || pendingVehicle.nlpExtractedData?.orExpiry || null,
             licenseExpiry: pendingVehicle.licenseExpiry || pendingVehicle.nlpExtractedData?.licenseExpiry || null
@@ -301,6 +302,7 @@ export default function ScannerPage() {
           owner: `${matchedVehicle.ownerName || 'Unknown'} (${matchedVehicle.registrantType || 'Student'})`, 
           make: matchedVehicle.vehicleMake || 'N/A', 
           serial: matchedVehicle.stickerSerial, 
+          vehicleImage: matchedVehicle.vehicleImageUrl || matchedVehicle.imageUrl || matchedVehicle.photoUrl || null,
           alert: expireReason,
           orExpiry: orExp,
           licenseExpiry: licExp

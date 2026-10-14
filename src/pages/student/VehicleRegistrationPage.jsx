@@ -10,7 +10,6 @@ import { applicationService } from '../../services/applicationService';
 import { settingsService } from '../../services/settingsService'; 
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore'; 
 import { db } from '../../config/firebase'; 
-import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'; 
 
@@ -21,6 +20,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
    ========================================================================= */
 
 function cleanText(raw) {
+  if (!raw) return '';
   return raw
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
@@ -229,117 +229,7 @@ function expiryMessage(status, isGuess) {
 }
 
 /* =========================================================================
-   COMPUTER VISION PROCESSORS (UPDATED WITH CONFIDENCE SCORE EXTRACTION)
-   ========================================================================= */
-
-const grayscaleCanvas = (source) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = source.width;
-  canvas.height = source.height;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(source, 0, 0);
-
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const d = imgData.data;
-
-  let min = 255, max = 0;
-  for (let i = 0; i < d.length; i += 4) {
-    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    if (g < min) min = g;
-    if (g > max) max = g;
-  }
-
-  const range = max - min || 1;
-  for (let i = 0; i < d.length; i += 4) {
-    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    const stretched = Math.min(255, Math.max(0, ((g - min) / range) * 255));
-    d[i] = d[i + 1] = d[i + 2] = stretched;
-  }
-  ctx.putImageData(imgData, 0, 0);
-  return canvas;
-};
-
-const computeOtsuThreshold = (grayValues) => {
-  const histogram = new Array(256).fill(0);
-  for (let i = 0; i < grayValues.length; i++) histogram[grayValues[i]]++;
-
-  const total = grayValues.length;
-  let sum = 0;
-  for (let t = 0; t < 256; t++) sum += t * histogram[t];
-
-  let sumB = 0, wB = 0, varMax = 0, threshold = 135;
-  for (let t = 0; t < 256; t++) {
-    wB += histogram[t];
-    if (wB === 0) continue;
-    const wF = total - wB;
-    if (wF === 0) break;
-    sumB += t * histogram[t];
-    const mB = sumB / wB;
-    const mF = (sum - sumB) / wF;
-    const varBetween = wB * wF * (mB - mF) * (mB - mF);
-    if (varBetween > varMax) {
-      varMax = varBetween;
-      threshold = t;
-    }
-  }
-  return Math.min(200, Math.max(60, threshold));
-};
-
-const binarizeCanvas = (source) => {
-  const canvas = document.createElement('canvas');
-  canvas.width = source.width;
-  canvas.height = source.height;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(source, 0, 0);
-
-  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const d = imgData.data;
-
-  const grayValues = new Uint8ClampedArray(d.length / 4);
-  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
-    grayValues[j] = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-  }
-  const threshold = computeOtsuThreshold(grayValues);
-
-  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
-    const color = grayValues[j] > threshold ? 255 : 0;
-    d[i] = d[i + 1] = d[i + 2] = color;
-  }
-  ctx.putImageData(imgData, 0, 0);
-  return canvas;
-};
-
-const TESS_PSM = { AUTO: '3', SPARSE_TEXT: '11' };
-
-const ocrBothPasses = async (sourceCanvas, psm = TESS_PSM.AUTO) => {
-  const [gray, binarized] = [grayscaleCanvas(sourceCanvas), binarizeCanvas(sourceCanvas)];
-  const options = { tessedit_pageseg_mode: psm };
-  const [r1, r2] = await Promise.all([
-    Tesseract.recognize(gray.toDataURL('image/png'), 'eng', options),
-    Tesseract.recognize(binarized.toDataURL('image/png'), 'eng', options),
-  ]);
-  return {
-    text: `${r1.data.text}\n${r2.data.text}`,
-    confidence: (r1.data.confidence + r2.data.confidence) / 2
-  };
-};
-
-const ocrAlnumPass = async (sourceCanvas, psm = TESS_PSM.SPARSE_TEXT) => {
-  const binarized = binarizeCanvas(sourceCanvas);
-  const result = await Tesseract.recognize(binarized.toDataURL('image/png'), 'eng', {
-    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/:,.',
-    tessedit_pageseg_mode: psm,
-  });
-  return {
-    text: result.data.text,
-    confidence: result.data.confidence
-  };
-};
-
-/* =========================================================================
-   CROP / ROTATE / AUTO-DETECT HELPERS (RESTORED)
+   CROP / ROTATE / AUTO-DETECT HELPERS
    ========================================================================= */
 
 const rotateCanvas = (source, degrees) => {
@@ -450,64 +340,15 @@ const autoDetectCardBounds = (canvas) => {
 };
 
 /* =========================================================================
-   PDF & FILE PROCESSORS
+   FILE & CLOUD VISION PROCESSORS
    ========================================================================= */
-
-const extractPdfTextLayer = async (pdfDoc) => {
-  let text = '';
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    text += '\n' + content.items.map((it) => it.str).join(' ');
-  }
-  return text;
-};
-
-const pdfHasEmbeddedImage = async (pdfDoc) => {
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const opList = await page.getOperatorList();
-    const hasImage = opList.fnArray.some((fn) =>
-      fn === pdfjsLib.OPS.paintImageXObject ||
-      fn === pdfjsLib.OPS.paintImageXObjectRepeat ||
-      fn === pdfjsLib.OPS.paintJpegXObject
-    );
-    if (hasImage) return true;
-  }
-  return false;
-};
-
-const ocrPdf = async (pdfDoc) => {
-  let text = '';
-  let alnumText = '';
-  let totalConf = 0;
-  let passes = 0;
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const viewport = page.getViewport({ scale: 3.2 });
-
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
-
-    await page.render({ canvasContext: context, viewport }).promise;
-
-    const [normal, alnum] = await Promise.all([ocrBothPasses(canvas), ocrAlnumPass(canvas)]);
-    text += '\n' + normal.text;
-    alnumText += '\n' + alnum.text;
-    totalConf += normal.confidence + alnum.confidence;
-    passes += 2;
-  }
-  return { text, alnumText, confidence: passes > 0 ? totalConf / passes : 100 };
-};
 
 const renderFileToCanvas = async (file) => {
   if (file.type === 'application/pdf') {
     const arrayBuffer = await file.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     const page = await pdfDoc.getPage(1);
-    const viewport = page.getViewport({ scale: 3.2 });
+    const viewport = page.getViewport({ scale: 2.5 }); 
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
     canvas.height = viewport.height;
@@ -533,54 +374,11 @@ const renderFileToCanvas = async (file) => {
   return canvas;
 };
 
-const processFile = async (file) => {
-  if (!file) return { text: '', alnumText: '', confidence: 100 };
-  
-  if (file.type === 'application/pdf') {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const layerText = cleanText(await extractPdfTextLayer(pdfDoc));
-    const hasEmbeddedImage = await pdfHasEmbeddedImage(pdfDoc);
-
-    if (layerText.length > 120 && !hasEmbeddedImage) {
-      return { text: layerText, alnumText: '', confidence: 100 }; 
-    }
-    const { text: ocrText, alnumText, confidence } = await ocrPdf(pdfDoc);
-    const combinedText = cleanText(`${layerText}\n${ocrText}`);
-    return { text: combinedText, alnumText: cleanText(alnumText), confidence };
-  }
-
-  const canvas = document.createElement('canvas');
-  const img = new Image();
-  img.src = URL.createObjectURL(file);
-  await new Promise((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
-  });
-  
-  const scaleFactor = Math.max(1, 2000 / Math.max(img.width, img.height));
-  canvas.width = img.width * scaleFactor;
-  canvas.height = img.height * scaleFactor;
-  const ctx = canvas.getContext('2d');
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  const [normalRes, alnumRes] = await Promise.all([ocrBothPasses(canvas), ocrAlnumPass(canvas)]);
-  return { 
-    text: cleanText(normalRes.text), 
-    alnumText: cleanText(alnumRes.text),
-    confidence: (normalRes.confidence + alnumRes.confidence) / 2
-  };
-};
-
-/* =========================================================================
-   ULTRA COMPRESSION FOR FIREBASE PAYLOAD (1MB LIMIT FIX)
-   ========================================================================= */
-const ultraCompressFile = async (file) => {
+const compressForStorage = async (file) => {
   if (!file) return null;
   try {
     const canvas = await renderFileToCanvas(file);
-    const MAX_DIM = 800; 
+    const MAX_DIM = 700; // Small enough for fast saving, big enough for manual admin review
     let { width, height } = canvas;
     
     if (width > height && width > MAX_DIM) {
@@ -600,13 +398,94 @@ const ultraCompressFile = async (file) => {
     ctx.fillRect(0, 0, width, height);
     ctx.drawImage(canvas, 0, 0, width, height);
 
+    // Compress to 50% JPEG quality to ensure 5 to 7 images easily fit under the 1MB limit
     return smallCanvas.toDataURL('image/jpeg', 0.5); 
+  } catch (err) {
+    console.error("Storage compression failed:", err);
+    return null;
+  }
+};
+
+const ultraCompressFile = async (file) => {
+  if (!file) return null;
+  try {
+    const canvas = await renderFileToCanvas(file);
+    const MAX_DIM = 1200; 
+    let { width, height } = canvas;
+    
+    if (width > height && width > MAX_DIM) {
+      height = Math.round(height * (MAX_DIM / width));
+      width = MAX_DIM;
+    } else if (height > MAX_DIM) {
+      width = Math.round(width * (MAX_DIM / height));
+      height = MAX_DIM;
+    }
+
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = width;
+    smallCanvas.height = height;
+    const ctx = smallCanvas.getContext('2d');
+    
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(canvas, 0, 0, width, height);
+
+    return smallCanvas.toDataURL('image/jpeg', 0.8); 
   } catch (err) {
     console.error("Ultra-compression failed:", err);
     return null;
   }
 };
 
+const processFile = async (file) => {
+  if (!file) return { text: '', alnumText: '', confidence: 100 };
+
+  try {
+    // 1. Compress the image to ensure it meets the free tier size limits
+    const base64DataUrl = await ultraCompressFile(file);
+    if (!base64DataUrl) throw new Error("Could not process image.");
+
+    const apiKey = import.meta.env.VITE_OCR_SPACE_API_KEY;
+    if (!apiKey) {
+      throw new Error("Missing VITE_OCR_SPACE_API_KEY in .env file");
+    }
+
+    // 2. Prepare the payload for OCR.space
+    const formData = new FormData();
+    formData.append('base64Image', base64DataUrl);
+    formData.append('apikey', apiKey);
+    formData.append('language', 'eng');
+    formData.append('isOverlayRequired', 'false');
+    formData.append('OCREngine', '2'); // Engine 2 is highly accurate for receipts/numbers
+
+    // 3. Send to Cloud
+    const response = await fetch('https://api.ocr.space/parse/image', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) throw new Error(`OCR API Error: ${response.status}`);
+
+    const result = await response.json();
+    
+    if (result.IsErroredOnProcessing) {
+      throw new Error(result.ErrorMessage[0]);
+    }
+
+    // 4. Extract and clean the returned text
+    const extractedText = result.ParsedResults?.[0]?.ParsedText || '';
+    const cleaned = cleanText(extractedText);
+
+    return {
+      text: cleaned,
+      alnumText: cleaned,
+      confidence: 95 // Cloud OCR default confidence
+    };
+  } catch (error) {
+    console.error("Cloud Extraction Error:", error);
+    throw error;
+  }
+};
 
 /* =========================================================================
    COMPONENT
@@ -638,6 +517,15 @@ export default function VehicleRegistrationPage() {
     registrantType: defaultRegistrantType, vehicleType: '', yearAndSection: '', 
     employeeId: '', companyId: '', studentId: '', plateNumber: ''
   });
+
+  useEffect(() => {
+    if (user?.role) {
+      const correctRole = user.role.toLowerCase() === 'faculty' ? 'Faculty' : 'Student';
+      if (form.registrantType !== correctRole) {
+        setForm(f => ({ ...f, registrantType: correctRole }));
+      }
+    }
+  }, [user]);
   
   const [vehiclePhotos, setVehiclePhotos] = useState([]);
   const [docs, setDocs] = useState({
@@ -755,7 +643,7 @@ export default function VehicleRegistrationPage() {
     return Object.keys(next).length === 0;
   }
 
-  async function handleNextStep1(event) {
+async function handleNextStep1(event) {
     event.preventDefault();
     if (!validateStep1()) return;
 
@@ -765,6 +653,45 @@ export default function VehicleRegistrationPage() {
       const cleanPlate = form.plateNumber.replace(/\s+/g, '').toUpperCase();
       const currentUserId = user?.uid || user?.id;
 
+      // Fetch all vehicles across the system
+      const [approvedSnap, vehiclesSnap] = await Promise.all([
+        getDocs(collection(db, 'approved_vehicles')),
+        getDocs(collection(db, 'vehicles'))
+      ]);
+      
+      const allSystemVehicles = [
+        ...approvedSnap.docs.map(doc => doc.data()),
+        ...vehiclesSnap.docs.map(doc => doc.data())
+      ];
+
+      // 1. STRICT REVOCATION CHECK
+      const revokedRecord = allSystemVehicles.find(v => 
+        (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === cleanPlate && 
+        (v.status === 'revoked' || v.accreditationStatus === 'Revoked')
+      );
+
+      if (revokedRecord) {
+        showToast(`Registration blocked. Plate ${form.plateNumber} is currently revoked. Please contact administration to lift the revocation first.`, { type: 'danger' });
+        setIsCheckingPlate(false);
+        return; 
+      }
+
+      // 2. DUPLICATE REGISTRATION CHECK
+      const existingActiveRecord = allSystemVehicles.find(v => 
+        (v.plateNumber || '').replace(/\s+/g, '').toUpperCase() === cleanPlate && 
+        v.status !== 'revoked' && v.accreditationStatus !== 'Revoked' && v.status !== 'expired' && v.accreditationStatus !== 'Expired'
+      );
+
+      if (existingActiveRecord) {
+        const isApproved = existingActiveRecord.status === 'approved' || existingActiveRecord.status === 'valid' || existingActiveRecord.accreditationStatus === 'Active';
+        const statusMsg = isApproved ? 'is already registered and active' : 'is currently pending or under review';
+        
+        showToast(`Registration blocked. Plate ${form.plateNumber} ${statusMsg}.`, { type: 'danger' });
+        setIsCheckingPlate(false);
+        return;
+      }
+
+      // 3. TIMED LOCKOUT CHECK
       const blacklistRef = doc(db, 'revoked_vehicles', cleanPlate);
       const blacklistSnap = await getDoc(blacklistRef);
 
@@ -779,6 +706,7 @@ export default function VehicleRegistrationPage() {
         }
       }
 
+      // 4. USER LOCKOUT CHECK
       if (currentUserId) {
         const userRevokedQ = query(collection(db, 'revoked_vehicles'), where('ownerId', '==', currentUserId));
         const userRevokedSnap = await getDocs(userRevokedQ);
@@ -798,6 +726,7 @@ export default function VehicleRegistrationPage() {
         }
       }
 
+      // If all security checks pass, proceed to Step 2 (Document Upload)
       setCurrentStep(2);
       window.scrollTo(0, 0);
 
@@ -905,14 +834,14 @@ export default function VehicleRegistrationPage() {
       }
 
       const [vehiclePhotoUrl, licenseUrl, orUrl, crUrl, authLetterUrl, deedOfSaleUrl, companyCertUrl] = await Promise.all([
-        ultraCompressFile(vehiclePhotos[0] || null), 
-        ultraCompressFile(docs.license || null),
-        ultraCompressFile(docs.or || null),
-        ultraCompressFile(docs.cr || null),
-        ultraCompressFile(docs.authLetter || null),
-        ultraCompressFile(docs.deedOfSale || null),
-        ultraCompressFile(docs.companyCert || null),
-      ]);
+    compressForStorage(vehiclePhotos[0] || null), 
+    compressForStorage(docs.license || null),
+    compressForStorage(docs.or || null),
+    compressForStorage(docs.cr || null),
+    compressForStorage(docs.authLetter || null),
+    compressForStorage(docs.deedOfSale || null),
+    compressForStorage(docs.companyCert || null),
+  ]);
 
       const safeData = (val) => (typeof val === 'string' ? val : null);
 
@@ -1000,7 +929,12 @@ export default function VehicleRegistrationPage() {
               <TextField id="address" label="Full Address" required value={form.address} error={errors.address} onChange={(e) => update('address', e.target.value)} />
 
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <SelectField id="registrantType" label="Registrant Type" required options={REGISTRANT_TYPES} value={form.registrantType} error={errors.registrantType} onChange={(e) => update('registrantType', e.target.value)} />
+                <TextField 
+                  id="registrantType" 
+                  label="Registrant Type" 
+                  value={form.registrantType} 
+                  disabled={true} 
+                />
                 <SelectField id="vehicleType" label="Vehicle Type" required options={VEHICLE_TYPES} value={form.vehicleType} error={errors.vehicleType} onChange={(e) => update('vehicleType', e.target.value)} />
               </div>
 

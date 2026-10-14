@@ -19,7 +19,8 @@ const STATUS_OPTIONS = [
   { value: 'rejected', label: 'Rejected' },
 ];
 
-function generateTimeline(app) {
+// FIX: Passed the vehicle object so we can check if BAO has finalized the payment
+function generateTimeline(app, vehicle) {
   if (app.timeline && Array.isArray(app.timeline)) return app.timeline;
   
   const steps = [{ 
@@ -29,24 +30,30 @@ function generateTimeline(app) {
     status: 'completed' 
   }];
   
-  const status = (app.status || '').toLowerCase();
+  // Determine true status based on whether BAO has activated the vehicle
+  let effectiveStatus = (app.status || '').toLowerCase();
+  if (vehicle && (vehicle.status === 'active' || vehicle.status === 'paid' || vehicle.accreditationStatus === 'Active')) {
+      effectiveStatus = 'completed';
+  }
 
-  if (status === 'pending' || status === 'under_review') {
+  if (effectiveStatus === 'pending' || effectiveStatus === 'under_review') {
      steps.push({ title: 'Under Review', label: 'Under Review', status: 'current' });
      steps.push({ title: 'Approval', label: 'Approval', status: 'upcoming' });
-  } else if (status === 'approved' || status === 'for_payment') {
+     steps.push({ title: 'Payment & Issuance', label: 'Payment & Issuance', status: 'upcoming' });
+  } else if (effectiveStatus === 'approved' || effectiveStatus === 'for_payment') {
      steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
      steps.push({ title: 'Approved', label: 'Approved', date: app.reviewedDate || app.approvedDate, status: 'completed' });
-     steps.push({ title: 'Payment & Issuance', label: 'Payment & Issuance', status: 'current' });
-  } else if (status === 'completed' || status === 'paid' || status === 'active') {
+     // FIX: Changed wording to clarify that payment is still needed
+     steps.push({ title: 'Pending Payment', label: 'Please proceed to BAO to pay and claim your sticker.', status: 'current' });
+  } else if (effectiveStatus === 'completed' || effectiveStatus === 'paid' || effectiveStatus === 'active') {
      steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
      steps.push({ title: 'Approved', label: 'Approved', date: app.reviewedDate || app.approvedDate, status: 'completed' });
-     steps.push({ title: 'Sticker Issued', label: 'Sticker Issued', date: app.dateIssued || new Date().toISOString().split('T')[0], status: 'completed' });
-  } else if (status === 'rejected' || status === 'revoked') {
+     steps.push({ title: 'Sticker Issued', label: 'Sticker Issued', date: vehicle?.dateIssued || app.dateIssued || new Date().toISOString().split('T')[0], status: 'completed' });
+  } else if (effectiveStatus === 'rejected' || effectiveStatus === 'revoked') {
      steps.push({ title: 'Under Review', label: 'Under Review', status: 'completed' });
      steps.push({ 
-       title: status === 'revoked' ? 'Revoked' : 'Rejected', 
-       label: status === 'revoked' ? 'Revoked' : 'Rejected',
+       title: effectiveStatus === 'revoked' ? 'Revoked' : 'Rejected', 
+       label: effectiveStatus === 'revoked' ? 'Revoked' : 'Rejected',
        date: app.revokedDate || app.reviewedDate || new Date().toISOString().split('T')[0], 
        status: 'error', 
        description: app.revokeReason || app.rejectReason 
@@ -133,8 +140,9 @@ export default function ApplicationStatusPage() {
     },
   ];
 
-  const isUpdatable = selected ? ['approved', 'completed', 'paid', 'active'].includes((selected.status || '').toLowerCase()) : false;
   const selectedVehicle = selected ? vehicles.find(v => v.applicationId === selected.id) : null;
+  // FIX: Removed 'approved' from the array. Now, documents can only be renewed if BAO has activated the vehicle.
+  const isUpdatable = selectedVehicle ? ['completed', 'paid', 'active'].includes((selectedVehicle.status || '').toLowerCase()) : false;
 
   return (
     <div className="flex w-full flex-col gap-6 font-sans text-slate-800 pb-10">
@@ -190,7 +198,7 @@ export default function ApplicationStatusPage() {
             )}
             
             <div className="py-2">
-              <Timeline steps={generateTimeline(selected)} />
+              <Timeline steps={generateTimeline(selected, selectedVehicle)} />
             </div>
 
             {isUpdatable && selectedVehicle && (
