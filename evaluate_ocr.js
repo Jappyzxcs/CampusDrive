@@ -15,6 +15,7 @@ const testDataset = [
   { filename: 'license_id6', expectedName: 'SORIANO, DAVE IAN LOUIS PIAMONTE', expectedDate: '2030/01/26' },
   { filename: 'license_id7', expectedName: 'FAUSTINO, MA. ANGELICA SISON', expectedDate: '2030/12/25' },
   { filename: 'license_id8', expectedName: 'GULAY, CRISANTO FLORENTINO', expectedDate: '2032/11/01' },
+  { filename: 'license_id9', expectedName: 'MAGDA, RONDALE ANGELO', expectedDate: '2029/10/01' },
 
   // --- CERTIFICATES OF REGISTRATION / CR (Extracting Name ONLY) ---
   { filename: 'espinelicr', expectedName: 'MARIA FE FELIPE ESPINELI' },
